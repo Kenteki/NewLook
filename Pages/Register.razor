@@ -1,0 +1,125 @@
+﻿@page "/register"
+@inject ApiService Api
+@inject AuthStateService AuthState
+@inject NavigationManager Navigation
+
+<PageTitle>Register - NewLook</PageTitle>
+
+<div class="container">
+    <div class="row justify-content-center mt-5">
+        <div class="col-md-5">
+            <div class="card shadow-sm">
+                <div class="card-body p-5">
+                    <h2 class="text-center mb-4">Create Account</h2>
+
+                    @if (!string.IsNullOrEmpty(errorMessage))
+                    {
+                        <div class="alert alert-danger" role="alert">
+                            @errorMessage
+                        </div>
+                    }
+
+                    @if (!string.IsNullOrEmpty(successMessage))
+                    {
+                        <div class="alert alert-success" role="alert">
+                            @successMessage
+                        </div>
+                    }
+
+                    <EditForm Model="@registerModel" OnValidSubmit="HandleRegister">
+                        <DataAnnotationsValidator />
+
+                        <div class="mb-3">
+                            <label for="email" class="form-label">Email</label>
+                            <InputText id="email" class="form-control" @bind-Value="registerModel.Email" placeholder="Enter your email" />
+                            <ValidationMessage For="@(() => registerModel.Email)" class="text-danger" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="username" class="form-label">Username</label>
+                            <InputText id="username" class="form-control" @bind-Value="registerModel.Username" placeholder="Choose a username" />
+                            <ValidationMessage For="@(() => registerModel.Username)" class="text-danger" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="password" class="form-label">Password</label>
+                            <InputText id="password" type="password" class="form-control" @bind-Value="registerModel.Password" placeholder="Create a password" />
+                            <ValidationMessage For="@(() => registerModel.Password)" class="text-danger" />
+                            <small class="form-text text-muted">Minimum 6 characters</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="confirmPassword" class="form-label">Confirm Password</label>
+                            <InputText id="confirmPassword" type="password" class="form-control" @bind-Value="registerModel.ConfirmPassword" placeholder="Confirm your password" />
+                            <ValidationMessage For="@(() => registerModel.ConfirmPassword)" class="text-danger" />
+                        </div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary btn-lg" disabled="@isLoading">
+                                @if (isLoading)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                                    <span>Creating account...</span>
+                                }
+                                else
+                                {
+                                    <span>Register</span>
+                                }
+                            </button>
+                        </div>
+                    </EditForm>
+
+                    <hr class="my-4">
+
+                    <div class="text-center">
+                        <p class="mb-0">
+                            Already have an account?
+                            <a href="/login" class="text-decoration-none fw-bold">Login here</a>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private RegisterRequestDto registerModel = new();
+    private string errorMessage = "";
+    private string successMessage = "";
+    private bool isLoading = false;
+
+    private async Task HandleRegister()
+    {
+        errorMessage = "";
+        successMessage = "";
+        isLoading = true;
+
+        try
+        {
+            var (success, message, data) = await Api.RegisterAsync(registerModel);
+
+            if (success && data != null)
+            {
+                successMessage = message + " Please check your email to verify your account.";
+                await AuthState.LoginAsync(data);
+
+                // Wait 2 seconds to show message, then redirect
+                await Task.Delay(2000);
+                Navigation.NavigateTo("/dashboard");
+            }
+            else
+            {
+                errorMessage = message;
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"An error occurred: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}

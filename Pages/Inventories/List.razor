@@ -1,0 +1,194 @@
+@page "/inventories"
+@inject HttpClient Http
+@inject AuthStateService AuthState
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<PageTitle>Inventories - NewLook</PageTitle>
+
+<div class="container mt-4">
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h2>Inventories</h2>
+        </div>
+        <div class="col-md-4 text-end">
+            @if (isAuthenticated)
+            {
+                <a href="/inventories/create" class="btn btn-primary">
+                    <i class="bi bi-plus-circle"></i> Create Inventory
+                </a>
+            }
+        </div>
+    </div>
+
+    <!-- Search Bar -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <div class="input-group">
+                <input type="text" class="form-control" placeholder="Search inventories..." @bind="searchQuery" @bind:event="oninput" />
+                <button class="btn btn-outline-secondary" @onclick="SearchInventories">
+                    <i class="bi bi-search"></i> Search
+                </button>
+            </div>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    }
+    else if (!inventories.Any())
+    {
+        <div class="alert alert-info">
+            <h5>No inventories found</h5>
+            <p>Be the first to create an inventory!</p>
+            @if (isAuthenticated)
+            {
+                <a href="/inventories/create" class="btn btn-primary">Create Inventory</a>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Category</th>
+                        <th>Creator</th>
+                        <th>Items</th>
+                        <th>Tags</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var inventory in inventories)
+                    {
+                        <tr>
+                            <td>
+                                <a href="/inventories/@inventory.Id" class="text-decoration-none">
+                                    @if (!string.IsNullOrEmpty(inventory.ImageUrl))
+                                    {
+                                        <img src="@inventory.ImageUrl" alt="@inventory.Title" style="width: 40px; height: 40px; object-fit: cover; border-radius: 4px;" class="me-2" />
+                                    }
+                                    <strong>@inventory.Title</strong>
+                                </a>
+                                <br />
+                                <small class="text-muted">@GetShortDescription(inventory.Description)</small>
+                            </td>
+                            <td>
+                                @if (!string.IsNullOrEmpty(inventory.CategoryName))
+                                {
+                                    <span class="badge bg-secondary">@inventory.CategoryName</span>
+                                }
+                            </td>
+                            <td>@inventory.CreatorUsername</td>
+                            <td>
+                                <span class="badge bg-primary">@inventory.ItemCount</span>
+                            </td>
+                            <td>
+                                @foreach (var tag in inventory.Tags.Take(3))
+                                {
+                                    <span class="badge bg-light text-dark me-1">@tag</span>
+                                }
+                                @if (inventory.Tags.Count > 3)
+                                {
+                                    <span class="badge bg-light text-dark">+@(inventory.Tags.Count - 3)</span>
+                                }
+                            </td>
+                            <td>
+                                <small>@inventory.CreatedAt.ToString("MMM dd, yyyy")</small>
+                            </td>
+                            <td>
+                                <a href="/inventories/@inventory.Id" class="btn btn-sm btn-outline-primary">View</a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@code {
+    private bool isAuthenticated = false;
+    private bool isLoading = true;
+    private string searchQuery = "";
+    private List<InventoryListItemDto> inventories = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        isAuthenticated = await AuthState.IsAuthenticatedAsync();
+        await LoadInventories();
+    }
+
+    private async Task LoadInventories()
+    {
+        isLoading = true;
+        try
+        {
+            var response = await Http.GetFromJsonAsync<List<InventoryListItemDto>>("/api/inventory");
+            inventories = response ?? new();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading inventories: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SearchInventories()
+    {
+        if (string.IsNullOrWhiteSpace(searchQuery))
+        {
+            await LoadInventories();
+            return;
+        }
+
+        isLoading = true;
+        try
+        {
+            var response = await Http.GetFromJsonAsync<List<InventoryListItemDto>>($"/api/inventory/search?q={searchQuery}");
+            inventories = response ?? new();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error searching inventories: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private string GetShortDescription(string description)
+    {
+        if (string.IsNullOrEmpty(description))
+            return "";
+        
+        return description.Length > 100 ? description.Substring(0, 100) + "..." : description;
+    }
+
+    // DTO class - should match backend
+    public class InventoryListItemDto
+    {
+        public int Id { get; set; }
+        public string Title { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public string? ImageUrl { get; set; }
+        public string CreatorUsername { get; set; } = string.Empty;
+        public string? CategoryName { get; set; }
+        public List<string> Tags { get; set; } = new();
+        public int ItemCount { get; set; }
+        public DateTime CreatedAt { get; set; }
+    }
+}

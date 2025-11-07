@@ -1,0 +1,100 @@
+@using NewLook.Services
+@inherits LayoutComponentBase
+@inject AuthStateService AuthState
+@inject NavigationManager Navigation
+
+<div class="page">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <strong>📦 NewLook</strong>
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/inventories">Inventories</a>
+                    </li>
+                </ul>
+                <ul class="navbar-nav ms-auto">
+                    @if (isAuthenticated)
+                    {
+                        <li class="nav-item">
+                            <a class="nav-link" href="/dashboard">Dashboard</a>
+                        </li>
+                        <li class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown">
+                                👤 @username
+                            </a>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li><a class="dropdown-item" href="/inventories/create">➕ Create Inventory</a></li>
+                                <li><a class="dropdown-item" href="/dashboard">📊 My Dashboard</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><button class="dropdown-item" @onclick="HandleLogout">🚪 Logout</button></li>
+                            </ul>
+                        </li>
+                    }
+                    else
+                    {
+                        <li class="nav-item">
+                            <a class="nav-link" href="/login">Login</a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link btn btn-outline-light btn-sm ms-2" href="/register">Register</a>
+                        </li>
+                    }
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <main class="content">
+        @Body
+    </main>
+
+    <footer class="footer mt-auto py-3 bg-light border-top">
+        <div class="container text-center">
+            <span class="text-muted">NewLook Inventory Management © 2024 | Built with Blazor & .NET</span>
+        </div>
+    </footer>
+</div>
+
+<!-- Bootstrap JS for dropdowns -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+@code {
+    private bool isAuthenticated = false;
+    private string username = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        AuthState.OnChange += StateHasChanged;
+        await LoadAuthState();
+    }
+
+    private async Task LoadAuthState()
+    {
+        isAuthenticated = await AuthState.IsAuthenticatedAsync();
+        if (isAuthenticated)
+        {
+            var user = await AuthState.GetCurrentUserAsync();
+            username = user?.Username ?? "";
+        }
+    }
+
+    private async Task HandleLogout()
+    {
+        await AuthState.LogoutAsync();
+        Navigation.NavigateTo("/login");
+    }
+
+    public void Dispose()
+    {
+        AuthState.OnChange -= StateHasChanged;
+    }
+}
