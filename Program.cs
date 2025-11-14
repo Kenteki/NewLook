@@ -4,49 +4,39 @@ using Microsoft.IdentityModel.Tokens;
 using NewLook.Data;
 using NewLook.Services;
 using System.Text;
-using Blazored.LocalStorage;
 using DotNetEnv;
 using NewLook.Services.Interfaces;
-using NewLook.Models.DTOs.Inventory.Interfaces;
+using Microsoft.AspNetCore.Components.Authorization;
+using NewLook.Models;
 
-// Load .env file
+// Load .env
 Env.Load();
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Override configuration with environment variables
-builder.Configuration.AddEnvironmentVariables();
-
-// ===== Database Configuration =====
+// ===== Database =====
 var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__ApplicationDbContext")
     ?? builder.Configuration.GetConnectionString("ApplicationDbContext");
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(connectionString));
 
-// ===== Blazor Configuration =====
+// ===== Blazor =====
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
-builder.Services.AddBlazoredLocalStorage();
+builder.Services.AddBlazorBootstrap();
 
-// Configure HttpClient for Blazor components
-builder.Services.AddScoped(sp => new HttpClient
-{
-    BaseAddress = new Uri(Environment.GetEnvironmentVariable("ApiBaseUrl") ?? builder.Configuration["ApiBaseUrl"] ?? "http://localhost:5070")
-});
+// ===== HttpClient =====
+builder.Services.AddHttpClient();
 
-// ===== CORS Configuration =====
+// ===== CORS =====
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", policy =>
-    {
-        policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader();
-    });
+        policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
 });
 
-// ===== Authentication & JWT Configuration =====
+// ===== JWT Authentication =====
 var jwtKey = Environment.GetEnvironmentVariable("Jwt__Key") ?? builder.Configuration["Jwt:Key"]!;
 var jwtIssuer = Environment.GetEnvironmentVariable("Jwt__Issuer") ?? builder.Configuration["Jwt:Issuer"];
 var jwtAudience = Environment.GetEnvironmentVariable("Jwt__Audience") ?? builder.Configuration["Jwt:Audience"];
@@ -73,62 +63,39 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization();
 
-// ===== HttpClient for External Auth =====
-builder.Services.AddHttpClient();
-builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.Configuration["ApiBaseUrl"] ?? "http://localhost:5070") });
-
-// ===== Register Services =====
+// ===== Services =====
 builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IExternalAuthService, ExternalAuthService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
-builder.Services.AddScoped<AuthStateService>();
 builder.Services.AddScoped<ApiService>();
 builder.Services.AddScoped<IInventoryService, InventoryService>();
 builder.Services.AddScoped<IItemService, ItemService>();
 builder.Services.AddScoped<ICustomIdService, CustomIdService>();
+builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<ICommentService, CommentService>();
+builder.Services.AddScoped<MarkdownService>();
+
+// ===== Cloudinary =====
+builder.Services.Configure<CloudinarySettings>(builder.Configuration.GetSection("Cloudinary"));
+builder.Services.AddScoped<ICloudinaryService, CloudinaryService>();
+
+builder.Services.AddCascadingAuthenticationState();
+builder.Services.AddScoped<AuthenticationStateProvider, CustomAuthenticationStateProvider>();
+builder.Services.AddScoped(sp =>
+    (CustomAuthenticationStateProvider)sp.GetRequiredService<AuthenticationStateProvider>());
 
 // ===== Controllers =====
 builder.Services.AddControllers();
 
-// ===== Swagger/OpenAPI =====
+// ===== Swagger =====
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(options =>
-{
-    options.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
-    {
-        Title = "NewLook API",
-        Version = "v1"
-    });
+builder.Services.AddSwaggerGen();
 
-    options.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
-    {
-        Description = "JWT Authorization header using the Bearer scheme. Enter 'Bearer' [space] and then your token",
-        Name = "Authorization",
-        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
-        Type = Microsoft.OpenApi.Models.SecuritySchemeType.ApiKey,
-        Scheme = "Bearer"
-    });
-
-    options.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
-    {
-        {
-            new Microsoft.OpenApi.Models.OpenApiSecurityScheme
-            {
-                Reference = new Microsoft.OpenApi.Models.OpenApiReference
-                {
-                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
-                    Id = "Bearer"
-                }
-            },
-            Array.Empty<string>()
-        }
-    });
-});
-
+// ===== Build app =====
 var app = builder.Build();
 
-// ===== Configure HTTP Pipeline =====
+// ===== HTTP Pipeline =====
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -137,11 +104,9 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
-
 app.UseCors("AllowAll");
 
 app.UseRouting();
-
 app.UseAuthentication();
 app.UseAuthorization();
 

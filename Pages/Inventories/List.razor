@@ -1,6 +1,10 @@
 @page "/inventories"
-@inject HttpClient Http
-@inject AuthStateService AuthState
+@using NewLook.Services.Interfaces
+@using NewLook.Models.DTOs.Inventory
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IInventoryService InventoryService
+@inject CustomAuthenticationStateProvider AuthState
+@inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 
@@ -75,7 +79,7 @@
                                 <a href="/inventories/@inventory.Id" class="text-decoration-none">
                                     @if (!string.IsNullOrEmpty(inventory.ImageUrl))
                                     {
-                                        <img src="@inventory.ImageUrl" alt="@inventory.Title" style="width: 40px; height: 40px; object-fit: cover; border-radius: 4px;" class="me-2" />
+                                        <img src="@inventory.ImageUrl" alt="@inventory.Title" class="inventory-image-small me-2" />
                                     }
                                     <strong>@inventory.Title</strong>
                                 </a>
@@ -133,8 +137,33 @@
         isLoading = true;
         try
         {
-            var response = await Http.GetFromJsonAsync<List<InventoryListItemDto>>("/api/inventory");
-            inventories = response ?? new();
+            if (isAuthenticated)
+            {
+                var userId = await GetCurrentUserIdAsync();
+                if (userId.HasValue)
+                {
+                    // Load user's own inventories
+                    var userInventories = await InventoryService.GetUserInventoriesAsync(userId.Value);
+
+                    // Load inventories user has access to
+                    var sharedInventories = await InventoryService.GetInventoriesWithAccessAsync(userId.Value);
+
+                    // Combine and remove duplicates
+                    inventories = userInventories.Concat(sharedInventories)
+                        .GroupBy(i => i.Id)
+                        .Select(g => g.First())
+                        .OrderByDescending(i => i.CreatedAt)
+                        .ToList();
+                }
+                else
+                {
+                    inventories = await InventoryService.GetPublicInventoriesAsync(100);
+                }
+            }
+            else
+            {
+                inventories = await InventoryService.GetPublicInventoriesAsync(100);
+            }
         }
         catch (Exception ex)
         {
@@ -144,6 +173,13 @@
         {
             isLoading = false;
         }
+    }
+
+    private async Task<int?> GetCurrentUserIdAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userIdClaim = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
+        return userIdClaim != null ? int.Parse(userIdClaim.Value) : (int?)null;
     }
 
     private async Task SearchInventories()
@@ -157,8 +193,7 @@
         isLoading = true;
         try
         {
-            var response = await Http.GetFromJsonAsync<List<InventoryListItemDto>>($"/api/inventory/search?q={searchQuery}");
-            inventories = response ?? new();
+            inventories = await InventoryService.SearchInventoriesAsync(searchQuery);
         }
         catch (Exception ex)
         {
@@ -174,21 +209,7 @@
     {
         if (string.IsNullOrEmpty(description))
             return "";
-        
-        return description.Length > 100 ? description.Substring(0, 100) + "..." : description;
-    }
 
-    // DTO class - should match backend
-    public class InventoryListItemDto
-    {
-        public int Id { get; set; }
-        public string Title { get; set; } = string.Empty;
-        public string Description { get; set; } = string.Empty;
-        public string? ImageUrl { get; set; }
-        public string CreatorUsername { get; set; } = string.Empty;
-        public string? CategoryName { get; set; }
-        public List<string> Tags { get; set; } = new();
-        public int ItemCount { get; set; }
-        public DateTime CreatedAt { get; set; }
+        return description.Length > 100 ? description.Substring(0, 100) + "..." : description;
     }
 }

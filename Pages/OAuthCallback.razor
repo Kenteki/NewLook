@@ -1,0 +1,56 @@
+@page "/oauth-callback"
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+
+<PageTitle>Authenticating...</PageTitle>
+
+<div class="d-flex justify-content-center align-items-center vh-100 bg-light">
+    <div class="text-center">
+        <div class="spinner-border spinner-border-lg text-primary mb-3" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <h4>Authenticating...</h4>
+        <p class="text-muted">Please wait while we complete the authentication.</p>
+    </div>
+</div>
+
+@code {
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                // Get the authorization code from URL query parameters
+                var uri = new Uri(Navigation.Uri);
+                var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+                var code = query["code"];
+
+                if (!string.IsNullOrEmpty(code))
+                {
+                    // Send the code back to the opener window
+                    await JS.InvokeVoidAsync("eval", $@"
+                        if (window.opener) {{
+                            window.opener.postMessage({{
+                                type: 'oauth',
+                                code: '{code}'
+                            }}, window.location.origin);
+                            window.close();
+                        }}
+                    ");
+                }
+                else
+                {
+                    // No code found, close the popup
+                    await JS.InvokeVoidAsync("eval", "window.close();");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"OAuth callback error: {ex.Message}");
+                // Try to close the window anyway
+                await JS.InvokeVoidAsync("eval", "window.close();");
+            }
+        }
+    }
+}

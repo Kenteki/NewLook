@@ -14,15 +14,18 @@ namespace NewLook.Controllers
         private readonly IAuthService _authService;
         private readonly IExternalAuthService _externalAuthService;
         private readonly ILogger<AuthController> _logger;
+        private readonly IConfiguration _configuration;
 
         public AuthController(
             IAuthService authService,
             IExternalAuthService externalAuthService,
-            ILogger<AuthController> logger)
+            ILogger<AuthController> logger,
+            IConfiguration configuration)
         {
             _authService = authService;
             _externalAuthService = externalAuthService;
             _logger = logger;
+            _configuration = configuration;
         }
 
         /// <summary>
@@ -89,6 +92,74 @@ namespace NewLook.Controllers
                 return BadRequest(new { message = authMessage });
 
             return Ok(authResponse);
+        }
+
+        /// <summary>
+        /// Exchange Google authorization code for access token
+        /// POST /api/auth/google/exchange
+        /// Body: { "code": "google-authorization-code" }
+        /// </summary>
+        [HttpPost("google/exchange")]
+        public async Task<IActionResult> ExchangeGoogleCode([FromBody] OAuthCodeExchangeDto dto)
+        {
+            if (string.IsNullOrEmpty(dto.Code))
+                return BadRequest(new { message = "Authorization code is required" });
+
+            try
+            {
+                var clientId = _configuration["Authentication:Google:ClientID"];
+                var clientSecret = _configuration["Authentication:Google:ClientSecret"];
+
+                // Get base URL - try multiple configurations
+                var baseUrl = _configuration["App:BaseUrl"]
+                    ?? _configuration["ApiBaseUrl"]
+                    ?? "http://localhost:5070";
+
+                var redirectUri = $"{baseUrl.TrimEnd('/')}/oauth-callback";
+
+                _logger.LogInformation("Exchanging Google code with redirect URI: {RedirectUri}", redirectUri);
+
+                using var httpClient = new HttpClient();
+                var requestBody = new Dictionary<string, string>
+        {
+            { "code", dto.Code },
+            { "client_id", clientId! },
+            { "client_secret", clientSecret! },
+            { "redirect_uri", redirectUri },
+            { "grant_type", "authorization_code" }
+        };
+
+                var response = await httpClient.PostAsync(
+                    "https://oauth2.googleapis.com/token",
+                    new FormUrlEncodedContent(requestBody)
+                );
+
+                var responseContent = await response.Content.ReadAsStringAsync();
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning("Google code exchange failed: {Error}", responseContent);
+                    return BadRequest(new { message = "Failed to exchange Google code", details = responseContent });
+                }
+
+                var tokenResponse = System.Text.Json.JsonSerializer.Deserialize<GoogleTokenResponseDto>(
+                    responseContent,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+                );
+
+                if (tokenResponse == null || string.IsNullOrEmpty(tokenResponse.AccessToken))
+                {
+                    return BadRequest(new { message = "Invalid response from Google" });
+                }
+
+                _logger.LogInformation("Successfully exchanged Google code for access token");
+                return Ok(new { accessToken = tokenResponse.AccessToken });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error exchanging Google code");
+                return BadRequest(new { message = "Error exchanging Google code", error = ex.Message });
+            }
         }
 
         /// <summary>
@@ -167,7 +238,7 @@ namespace NewLook.Controllers
                 Email = user.Email,
                 Username = user.Username,
                 Roles = roles,
-                UI_Language= user.UI_Language,
+                UI_Language = user.UI_Language,
                 UI_Theme = user.UI_Theme
             });
         }
@@ -217,6 +288,8 @@ namespace NewLook.Controllers
 
             return Ok(new { message });
         }
+
+
     }
 
     public class VerifyEmailDto

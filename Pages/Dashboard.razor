@@ -1,82 +1,369 @@
-﻿@page "/dashboard"
-@inject AuthStateService AuthState
+@page "/dashboard"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using NewLook.Services.Interfaces
+@using NewLook.Models.DTOs.Inventory
+@using NewLook.Services
+@attribute [Authorize]
+@inject IInventoryService InventoryService
+@inject CustomAuthenticationStateProvider AuthStateProvider
+@inject AuthenticationStateProvider AuthState
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 
 <PageTitle>Dashboard - NewLook</PageTitle>
 
 <div class="container mt-4">
-    @if (isAuthenticated && currentUser != null)
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h2>My Dashboard</h2>
+            <p class="text-muted">Welcome back, <strong>@username</strong>!</p>
+        </div>
+        <div class="col-md-4 text-end">
+            <a href="/inventories/create" class="btn btn-primary">
+                <i class="bi bi-plus-circle me-2"></i>Create Inventory
+            </a>
+        </div>
+    </div>
+
+    @if (isLoading)
     {
-        <div class="row">
-            <div class="col-12">
-                <h1 class="mb-4">Welcome back, @currentUser.Username!</h1>
-            </div>
-        </div>
-
-        <div class="row">
-            <div class="col-md-4 mb-4">
-                <div class="card shadow-sm">
-                    <div class="card-body text-center">
-                        <h3 class="text-primary">0</h3>
-                        <p class="text-muted mb-0">My Inventories</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4 mb-4">
-                <div class="card shadow-sm">
-                    <div class="card-body text-center">
-                        <h3 class="text-success">0</h3>
-                        <p class="text-muted mb-0">Total Items</p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4 mb-4">
-                <div class="card shadow-sm">
-                    <div class="card-body text-center">
-                        <h3 class="text-info">0</h3>
-                        <p class="text-muted mb-0">Shared With Me</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="row mt-4">
-            <div class="col-12">
-                <div class="card shadow-sm">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0">Recent Inventories</h5>
-                        <button class="btn btn-primary btn-sm">+ New Inventory</button>
-                    </div>
-                    <div class="card-body">
-                        <p class="text-muted text-center py-5">
-                            No inventories yet. Click "New Inventory" to get started!
-                        </p>
-                    </div>
-                </div>
-            </div>
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
         </div>
     }
     else
     {
-        <div class="text-center mt-5">
-            <p>Loading...</p>
+        <!-- My Inventories -->
+        <div class="row mb-5">
+            <div class="col-12">
+                <div class="card shadow-sm">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="bi bi-box-seam me-2"></i>My Inventories (@myInventories.Count)
+                        </h5>
+                        <div class="input-group input-group-narrow">
+                            <input type="text" class="form-control" placeholder="Filter by title..."
+                                   @bind="ownedFilterQuery" @bind:event="oninput" />
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        @if (!filteredOwnedInventories.Any())
+                        {
+                            <div class="p-4 text-center text-muted">
+                                @if (string.IsNullOrWhiteSpace(ownedFilterQuery))
+                                {
+                                    <p>You haven't created any inventories yet.</p>
+                                    <a href="/inventories/create" class="btn btn-primary">Create Your First Inventory</a>
+                                }
+                                else
+                                {
+                                    <p>No inventories match your filter.</p>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th class="th-sortable" @onclick='() => SortOwnedInventories("title")'>
+                                                Title
+                                                @if (ownedSortColumn == "title")
+                                                {
+                                                    <i class="bi bi-@(ownedSortAscending ? "arrow-up" : "arrow-down")"></i>
+                                                }
+                                            </th>
+                                            <th>Category</th>
+                                            <th class="th-sortable" @onclick='() => SortOwnedInventories("items")'>
+                                                Items
+                                                @if (ownedSortColumn == "items")
+                                                {
+                                                    <i class="bi bi-@(ownedSortAscending ? "arrow-up" : "arrow-down")"></i>
+                                                }
+                                            </th>
+                                            <th class="th-sortable" @onclick='() => SortOwnedInventories("created")'>
+                                                Created
+                                                @if (ownedSortColumn == "created")
+                                                {
+                                                    <i class="bi bi-@(ownedSortAscending ? "arrow-up" : "arrow-down")"></i>
+                                                }
+                                            </th>
+                                            <th class="th-actions">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var inventory in filteredOwnedInventories)
+                                        {
+                                            <tr>
+                                                <td>
+                                                    <a href="/inventories/@inventory.Id" class="text-decoration-none">
+                                                        <strong>@inventory.Title</strong>
+                                                    </a>
+                                                </td>
+                                                <td>
+                                                    @if (!string.IsNullOrEmpty(inventory.CategoryName))
+                                                    {
+                                                        <span class="badge bg-secondary">@inventory.CategoryName</span>
+                                                    }
+                                                </td>
+                                                <td>
+                                                    <span class="badge bg-primary">@inventory.ItemCount</span>
+                                                </td>
+                                                <td>
+                                                    <small class="text-muted">@inventory.CreatedAt.ToString("MMM dd, yyyy")</small>
+                                                </td>
+                                                <td>
+                                                    <a href="/inventories/@inventory.Id" class="btn btn-sm btn-outline-primary me-1">
+                                                        <i class="bi bi-eye"></i> View
+                                                    </a>
+                                                    <a href="/inventories/edit/@inventory.Id" class="btn btn-sm btn-outline-secondary me-1">
+                                                        <i class="bi bi-pencil"></i> Edit
+                                                    </a>
+                                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => DeleteInventory(inventory.Id)">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Inventories with Write Access -->
+        <div class="row mb-5">
+            <div class="col-12">
+                <div class="card shadow-sm">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="bi bi-people me-2"></i>Shared With Me (@sharedInventories.Count)
+                        </h5>
+                        <div class="input-group input-group-narrow">
+                            <input type="text" class="form-control" placeholder="Filter by title..."
+                                   @bind="sharedFilterQuery" @bind:event="oninput" />
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        @if (!filteredSharedInventories.Any())
+                        {
+                            <div class="p-4 text-center text-muted">
+                                @if (string.IsNullOrWhiteSpace(sharedFilterQuery))
+                                {
+                                    <p>No inventories have been shared with you.</p>
+                                }
+                                else
+                                {
+                                    <p>No shared inventories match your filter.</p>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th class="th-sortable" @onclick='() => SortSharedInventories("title")'>
+                                                Title
+                                                @if (sharedSortColumn == "title")
+                                                {
+                                                    <i class="bi bi-@(sharedSortAscending ? "arrow-up" : "arrow-down")"></i>
+                                                }
+                                            </th>
+                                            <th>Category</th>
+                                            <th>Owner</th>
+                                            <th class="th-sortable" @onclick='() => SortSharedInventories("items")'>
+                                                Items
+                                                @if (sharedSortColumn == "items")
+                                                {
+                                                    <i class="bi bi-@(sharedSortAscending ? "arrow-up" : "arrow-down")"></i>
+                                                }
+                                            </th>
+                                            <th class="th-actions-narrow">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var inventory in filteredSharedInventories)
+                                        {
+                                            <tr>
+                                                <td>
+                                                    <a href="/inventories/@inventory.Id" class="text-decoration-none">
+                                                        <strong>@inventory.Title</strong>
+                                                    </a>
+                                                </td>
+                                                <td>
+                                                    @if (!string.IsNullOrEmpty(inventory.CategoryName))
+                                                    {
+                                                        <span class="badge bg-secondary">@inventory.CategoryName</span>
+                                                    }
+                                                </td>
+                                                <td>@inventory.CreatorUsername</td>
+                                                <td>
+                                                    <span class="badge bg-primary">@inventory.ItemCount</span>
+                                                </td>
+                                                <td>
+                                                    <a href="/inventories/@inventory.Id" class="btn btn-sm btn-outline-primary">
+                                                        <i class="bi bi-eye"></i> View
+                                                    </a>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
         </div>
     }
 </div>
 
 @code {
-    private bool isAuthenticated = false;
-    private UserDto? currentUser = null;
+    private bool isLoading = true;
+    private string username = "";
+    private List<InventoryListItemDto> myInventories = new();
+    private List<InventoryListItemDto> sharedInventories = new();
+
+    // Filtering
+    private string ownedFilterQuery = "";
+    private string sharedFilterQuery = "";
+
+    // Sorting for owned inventories
+    private string ownedSortColumn = "created";
+    private bool ownedSortAscending = false;
+
+    // Sorting for shared inventories
+    private string sharedSortColumn = "title";
+    private bool sharedSortAscending = true;
+
+    private List<InventoryListItemDto> filteredOwnedInventories => ApplyFilter(ApplySort(myInventories, ownedSortColumn, ownedSortAscending), ownedFilterQuery);
+    private List<InventoryListItemDto> filteredSharedInventories => ApplyFilter(ApplySort(sharedInventories, sharedSortColumn, sharedSortAscending), sharedFilterQuery);
 
     protected override async Task OnInitializedAsync()
     {
-        isAuthenticated = await AuthState.IsAuthenticatedAsync();
-        if (!isAuthenticated)
-        {
-            Navigation.NavigateTo("/login");
-            return;
-        }
+        await LoadData();
+    }
 
-        currentUser = await AuthState.GetCurrentUserAsync();
+    private async Task LoadData()
+    {
+        isLoading = true;
+        try
+        {
+            var authState = await AuthState.GetAuthenticationStateAsync();
+            username = authState.User.Identity?.Name ?? "User";
+
+            var userId = await GetCurrentUserIdAsync();
+            if (userId.HasValue)
+            {
+                myInventories = await InventoryService.GetUserInventoriesAsync(userId.Value);
+                sharedInventories = await InventoryService.GetInventoriesWithAccessAsync(userId.Value);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading dashboard: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task<int?> GetCurrentUserIdAsync()
+    {
+        var authState = await AuthState.GetAuthenticationStateAsync();
+        var userIdClaim = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
+        return userIdClaim != null ? int.Parse(userIdClaim.Value) : (int?)null;
+    }
+
+    private List<InventoryListItemDto> ApplyFilter(List<InventoryListItemDto> inventories, string filterQuery)
+    {
+        if (string.IsNullOrWhiteSpace(filterQuery))
+            return inventories;
+
+        var lowerQuery = filterQuery.ToLower();
+        return inventories.Where(i =>
+            i.Title.ToLower().Contains(lowerQuery) ||
+            (i.Description ?? "").ToLower().Contains(lowerQuery)
+        ).ToList();
+    }
+
+    private List<InventoryListItemDto> ApplySort(List<InventoryListItemDto> inventories, string sortColumn, bool ascending)
+    {
+        var sorted = sortColumn switch
+        {
+            "title" => ascending
+                ? inventories.OrderBy(i => i.Title)
+                : inventories.OrderByDescending(i => i.Title),
+            "items" => ascending
+                ? inventories.OrderBy(i => i.ItemCount)
+                : inventories.OrderByDescending(i => i.ItemCount),
+            "created" => ascending
+                ? inventories.OrderBy(i => i.CreatedAt)
+                : inventories.OrderByDescending(i => i.CreatedAt),
+            _ => inventories.OrderByDescending(i => i.CreatedAt)
+        };
+
+        return sorted.ToList();
+    }
+
+    private void SortOwnedInventories(string column)
+    {
+        if (ownedSortColumn == column)
+        {
+            ownedSortAscending = !ownedSortAscending;
+        }
+        else
+        {
+            ownedSortColumn = column;
+            ownedSortAscending = true;
+        }
+    }
+
+    private void SortSharedInventories(string column)
+    {
+        if (sharedSortColumn == column)
+        {
+            sharedSortAscending = !sharedSortAscending;
+        }
+        else
+        {
+            sharedSortColumn = column;
+            sharedSortAscending = true;
+        }
+    }
+
+    private async Task DeleteInventory(int inventoryId)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "Are you sure you want to delete this inventory? This action cannot be undone."))
+            return;
+
+        try
+        {
+            var userId = await GetCurrentUserIdAsync();
+            if (!userId.HasValue) return;
+
+            var (success, message) = await InventoryService.DeleteInventoryAsync(inventoryId, userId.Value);
+            if (success)
+            {
+                myInventories.RemoveAll(i => i.Id == inventoryId);
+                StateHasChanged();
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", $"Error deleting inventory: {message}");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error deleting inventory: {ex.Message}");
+        }
     }
 }

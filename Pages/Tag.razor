@@ -1,0 +1,171 @@
+@page "/tag/{TagName}"
+@using NewLook.Services.Interfaces
+@using NewLook.Models.DTOs.Inventory
+@inject IInventoryService InventoryService
+@inject NavigationManager Navigation
+
+<PageTitle>Tag: @TagName - NewLook</PageTitle>
+
+<div class="container mt-4">
+    <div class="row mb-4">
+        <div class="col-md-10 mx-auto">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="/">Home</a></li>
+                    <li class="breadcrumb-item active" aria-current="page">Tag: @TagName</li>
+                </ol>
+            </nav>
+
+            <h2>
+                <i class="bi bi-tag me-2"></i>
+                Inventories tagged with "@TagName"
+            </h2>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Loading inventories...</p>
+        </div>
+    }
+    else
+    {
+        <div class="row">
+            <div class="col-md-10 mx-auto">
+                @if (!inventories.Any())
+                {
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle me-2"></i>
+                        No inventories found with this tag.
+                    </div>
+                    <a href="/" class="btn btn-outline-primary">Back to Home</a>
+                }
+                else
+                {
+                    <div class="card shadow-sm mb-4">
+                        <div class="card-header">
+                            <h5 class="mb-0">Found @inventories.Count inventory(ies)</h5>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th class="col-auto">Image</th>
+                                            <th>Title</th>
+                                            <th>Category</th>
+                                            <th>Creator</th>
+                                            <th class="col-auto">Items</th>
+                                            <th class="col-auto">Created</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var inventory in inventories)
+                                        {
+                                            <tr class="clickable-row" @onclick="() => NavigateToInventory(inventory.Id)">
+                                                <td>
+                                                    @if (!string.IsNullOrEmpty(inventory.ImageUrl))
+                                                    {
+                                                        <img src="@inventory.ImageUrl" alt="@inventory.Title"
+                                                             class="inventory-thumbnail" />
+                                                    }
+                                                    else
+                                                    {
+                                                        <div class="inventory-thumbnail-placeholder">
+                                                            <i class="bi bi-box text-muted"></i>
+                                                        </div>
+                                                    }
+                                                </td>
+                                                <td>
+                                                    <strong>@inventory.Title</strong>
+                                                    @if (!string.IsNullOrEmpty(inventory.Description))
+                                                    {
+                                                        <br />
+                                                        <small class="text-muted">
+                                                            @(inventory.Description.Length > 100
+                                                                ? inventory.Description.Substring(0, 100) + "..."
+                                                                : inventory.Description)
+                                                        </small>
+                                                    }
+                                                </td>
+                                                <td>
+                                                    @if (!string.IsNullOrEmpty(inventory.CategoryName))
+                                                    {
+                                                        <span class="badge bg-secondary">@inventory.CategoryName</span>
+                                                    }
+                                                </td>
+                                                <td>@inventory.CreatorUsername</td>
+                                                <td>
+                                                    <span class="badge bg-primary">@inventory.ItemCount</span>
+                                                </td>
+                                                <td>
+                                                    <small class="text-muted">@inventory.CreatedAt.ToString("MMM dd, yyyy")</small>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <a href="/" class="btn btn-outline-secondary">
+                        <i class="bi bi-arrow-left me-2"></i>Back to Home
+                    </a>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string TagName { get; set; } = "";
+
+    private bool isLoading = true;
+    private List<InventoryListItemDto> inventories = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadInventories();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadInventories();
+    }
+
+    private async Task LoadInventories()
+    {
+        isLoading = true;
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(TagName))
+            {
+                inventories = await InventoryService.GetInventoriesByTagAsync(TagName);
+            }
+            else
+            {
+                inventories = new List<InventoryListItemDto>();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading inventories by tag: {ex.Message}");
+            inventories = new List<InventoryListItemDto>();
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void NavigateToInventory(int id)
+    {
+        Navigation.NavigateTo($"/inventories/{id}");
+    }
+}

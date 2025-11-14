@@ -1,8 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using NewLook.Models.DTOs.Inventory;
-using NewLook.Models.DTOs.Inventory.Interfaces;
-using NewLook.Services;
+using NewLook.Services.Interfaces;
 using System.Security.Claims;
 
 namespace NewLook.Controllers

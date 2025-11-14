@@ -127,15 +127,18 @@ namespace NewLook.Services
         {
             try
             {
-                var clientId = _configuration["Authentication:GitHub:ClientId"];
-                var clientSecret = _configuration["Authentication:GitHub:ClientSecret"];
+                var clientId = _configuration["Authentication:Github:ClientID"]!;
+                var clientSecret = _configuration["Authentication:Github:ClientSecret"]!;
+                var baseUrl = _configuration["App:BaseUrl"] ?? "http://localhost:5070";
+                var redirectUri = $"{baseUrl}/oauth-callback";
 
                 var requestBody = new Dictionary<string, string>
-                {
-                    { "client_id", clientId! },
-                    { "client_secret", clientSecret! },
-                    { "code", code }
-                };
+        {
+            { "client_id", clientId },
+            { "client_secret", clientSecret },
+            { "code", code },
+            { "redirect_uri", redirectUri }
+        };
 
                 var request = new HttpRequestMessage(HttpMethod.Post, "https://github.com/login/oauth/access_token")
                 {
@@ -143,20 +146,19 @@ namespace NewLook.Services
                 };
                 request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
+                _logger.LogInformation("Exchanging GitHub code: {Body}", JsonSerializer.Serialize(requestBody));
+
                 var response = await _httpClient.SendAsync(request);
+                var responseContent = await response.Content.ReadAsStringAsync();
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    var error = await response.Content.ReadAsStringAsync();
-                    _logger.LogWarning("GitHub code exchange failed: {Error}", error);
+                    _logger.LogWarning("GitHub code exchange failed: {Error}", responseContent);
                     return (false, "Failed to exchange GitHub code", null);
                 }
 
-                var responseContent = await response.Content.ReadAsStringAsync();
-                var tokenResponse = JsonSerializer.Deserialize<GitHubTokenResponseDto>(responseContent, new JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
+                var tokenResponse = JsonSerializer.Deserialize<GitHubTokenResponseDto>(responseContent,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
                 if (tokenResponse == null || string.IsNullOrEmpty(tokenResponse.AccessToken))
                 {

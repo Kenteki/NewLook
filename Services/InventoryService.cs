@@ -1,8 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using NewLook.Data;
+using NewLook.Models.DTOs;
 using NewLook.Models.DTOs.Inventory;
-using NewLook.Models.DTOs.Inventory.Interfaces;
 using NewLook.Models.Entities;
+using NewLook.Services.Interfaces;
 
 namespace NewLook.Services
 {
@@ -240,7 +241,8 @@ namespace NewLook.Services
 
         public async Task<List<InventoryListItemDto>> GetPublicInventoriesAsync(int take = 10)
         {
-            return await _context.Inventories
+            var inventories = await _context.Inventories
+                .AsNoTracking()
                 .Include(i => i.Creator)
                 .Include(i => i.Category)
                 .Include(i => i.InventoryTags).ThenInclude(it => it.Tag)
@@ -248,50 +250,114 @@ namespace NewLook.Services
                 .Where(i => i.IsPublic)
                 .OrderByDescending(i => i.CreatedAt)
                 .Take(take)
-                .Select(i => MapToListItem(i))
                 .ToListAsync();
+
+            return inventories.Select(i => new InventoryListItemDto
+            {
+                Id = i.Id,
+                Title = i.Title ?? "",
+                Description = !string.IsNullOrEmpty(i.Description) && i.Description.Length > 150
+                    ? i.Description.Substring(0, 150) + "..."
+                    : i.Description ?? "",
+                ImageUrl = i.ImageUrl,
+                CreatorUsername = i.Creator?.Username ?? "Unknown",
+                CategoryName = i.Category?.Name,
+                Tags = i.InventoryTags?.Select(it => it.Tag?.Name ?? "").Where(n => !string.IsNullOrEmpty(n)).ToList() ?? new List<string>(),
+                ItemCount = i.Items?.Count ?? 0,
+                CreatedAt = i.CreatedAt
+            }).ToList();
         }
 
         public async Task<List<InventoryListItemDto>> GetLatestInventoriesAsync(int take = 5)
         {
-            return await _context.Inventories
+            var inventories = await _context.Inventories
+                .AsNoTracking()
                 .Include(i => i.Creator)
                 .Include(i => i.Category)
                 .Include(i => i.InventoryTags).ThenInclude(it => it.Tag)
                 .Include(i => i.Items)
                 .OrderByDescending(i => i.CreatedAt)
                 .Take(take)
-                .Select(i => MapToListItem(i))
                 .ToListAsync();
+
+            return inventories.Select(i => new InventoryListItemDto
+            {
+                Id = i.Id,
+                Title = i.Title ?? "",
+                Description = !string.IsNullOrEmpty(i.Description) && i.Description.Length > 150
+                    ? i.Description.Substring(0, 150) + "..."
+                    : i.Description ?? "",
+                ImageUrl = i.ImageUrl,
+                CreatorUsername = i.Creator?.Username ?? "Unknown",
+                CategoryName = i.Category?.Name,
+                Tags = i.InventoryTags?.Select(it => it.Tag?.Name ?? "").Where(n => !string.IsNullOrEmpty(n)).ToList() ?? new List<string>(),
+                ItemCount = i.Items?.Count ?? 0,
+                CreatedAt = i.CreatedAt
+            }).ToList();
         }
 
         public async Task<List<InventoryListItemDto>> GetPopularInventoriesAsync(int take = 5)
         {
-            return await _context.Inventories
+            // Load all inventories with their related data
+            var inventories = await _context.Inventories
+                .AsNoTracking()
                 .Include(i => i.Creator)
                 .Include(i => i.Category)
                 .Include(i => i.InventoryTags).ThenInclude(it => it.Tag)
                 .Include(i => i.Items)
-                .OrderByDescending(i => i.Items.Count)
-                .Take(take)
-                .Select(i => MapToListItem(i))
                 .ToListAsync();
+
+            // Sort by item count in memory and take top N
+            var popularInventories = inventories
+                .OrderByDescending(i => i.Items?.Count ?? 0)
+                .Take(take)
+                .ToList();
+
+            return popularInventories.Select(i => new InventoryListItemDto
+            {
+                Id = i.Id,
+                Title = i.Title ?? "",
+                Description = !string.IsNullOrEmpty(i.Description) && i.Description.Length > 150
+                    ? i.Description.Substring(0, 150) + "..."
+                    : i.Description ?? "",
+                ImageUrl = i.ImageUrl,
+                CreatorUsername = i.Creator?.Username ?? "Unknown",
+                CategoryName = i.Category?.Name,
+                Tags = i.InventoryTags?.Select(it => it.Tag?.Name ?? "").Where(n => !string.IsNullOrEmpty(n)).ToList() ?? new List<string>(),
+                ItemCount = i.Items?.Count ?? 0,
+                CreatedAt = i.CreatedAt
+            }).ToList();
         }
 
         public async Task<List<InventoryListItemDto>> SearchInventoriesAsync(string query)
         {
             var lowerQuery = query.ToLower();
-            
-            return await _context.Inventories
+
+            var inventories = await _context.Inventories
+                .AsNoTracking()
                 .Include(i => i.Creator)
                 .Include(i => i.Category)
                 .Include(i => i.InventoryTags).ThenInclude(it => it.Tag)
                 .Include(i => i.Items)
-                .Where(i => i.Title.ToLower().Contains(lowerQuery) || 
-                           i.Description.ToLower().Contains(lowerQuery) ||
+                .Where(i => i.Title.ToLower().Contains(lowerQuery) ||
+                           (i.Description != null && i.Description.ToLower().Contains(lowerQuery)) ||
                            i.InventoryTags.Any(it => it.Tag.Name.ToLower().Contains(lowerQuery)))
-                .Select(i => MapToListItem(i))
                 .ToListAsync();
+
+            return inventories.Select(i => new InventoryListItemDto
+            {
+                Id = i.Id,
+                Title = i.Title ?? "",
+                Description = !string.IsNullOrEmpty(i.Description) && i.Description.Length > 150
+                    ? i.Description.Substring(0, 150) + "..."
+                    : i.Description ?? "",
+                ImageUrl = i.ImageUrl,
+                CreatorUsername = i.Creator?.Username ?? "Unknown",
+                CategoryName = i.Category?.Name,
+                Tags = i.InventoryTags?.Select(it => it.Tag?.Name ?? "").Where(n => !string.IsNullOrEmpty(n)).ToList() ?? new List<string>(),
+                ItemCount = i.Items?.Count ?? 0,
+                CreatedAt = i.CreatedAt
+            }).ToList();
         }
 
         public async Task<List<InventoryAccessDto>> GetInventoryAccessListAsync(int inventoryId, int userId)
@@ -617,15 +683,102 @@ namespace NewLook.Services
             return new InventoryListItemDto
             {
                 Id = i.Id,
-                Title = i.Title,
-                Description = i.Description.Length > 150 ? i.Description.Substring(0, 150) + "..." : i.Description,
+                Title = i.Title ?? "",
+                Description = !string.IsNullOrEmpty(i.Description) && i.Description.Length > 150
+                    ? i.Description.Substring(0, 150) + "..."
+                    : i.Description ?? "",
                 ImageUrl = i.ImageUrl,
-                CreatorUsername = i.Creator.Username,
+                CreatorUsername = i.Creator?.Username ?? "Unknown",
                 CategoryName = i.Category?.Name,
-                Tags = i.InventoryTags.Select(it => it.Tag.Name).ToList(),
-                ItemCount = i.Items.Count,
+                Tags = i.InventoryTags?.Select(it => it.Tag?.Name ?? "").Where(n => !string.IsNullOrEmpty(n)).ToList() ?? new List<string>(),
+                ItemCount = i.Items?.Count ?? 0,
                 CreatedAt = i.CreatedAt
             };
+        }
+
+        public async Task<(bool Success, string Message)> SaveCustomIdConfigurationAsync(int inventoryId, List<CustomIdElementDto> elements, int userId)
+        {
+            try
+            {
+                var inventory = await _context.Inventories.FindAsync(inventoryId);
+                if (inventory == null)
+                    return (false, "Inventory not found");
+
+                // Check permissions
+                if (inventory.CreatorId != userId)
+                {
+                    var isAdmin = await _context.UserRoles.AnyAsync(ur => ur.UserId == userId && ur.Role.Name == "Admin");
+                    if (!isAdmin)
+                        return (false, "You don't have permission to edit this inventory");
+                }
+
+                // Remove existing custom ID elements
+                var existingElements = await _context.CustomIdElements
+                    .Where(e => e.InventoryId == inventoryId)
+                    .ToListAsync();
+                _context.CustomIdElements.RemoveRange(existingElements);
+
+                // Add new custom ID elements
+                foreach (var element in elements)
+                {
+                    _context.CustomIdElements.Add(new CustomIdElement
+                    {
+                        InventoryId = inventoryId,
+                        ElementType = element.ElementType,
+                        Value = element.Value,
+                        Order = element.Order
+                    });
+                }
+
+                await _context.SaveChangesAsync();
+                return (true, "Custom ID configuration saved successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error saving custom ID configuration");
+                return (false, "Error saving custom ID configuration");
+            }
+        }
+
+        public async Task<List<CustomIdElementDto>> GetCustomIdConfigurationAsync(int inventoryId)
+        {
+            var elements = await _context.CustomIdElements
+                .Where(e => e.InventoryId == inventoryId)
+                .OrderBy(e => e.Order)
+                .ToListAsync();
+
+            return elements.Select(e => new CustomIdElementDto
+            {
+                ElementType = e.ElementType,
+                Value = e.Value,
+                Order = e.Order
+            }).ToList();
+        }
+
+        public async Task<List<TagDto>> GetAllTagsAsync()
+        {
+            return await _context.Tags
+                .Select(t => new TagDto
+                {
+                    Id = t.Id,
+                    Name = t.Name,
+                    Count = t.InventoryTags.Count
+                })
+                .Where(t => t.Count > 0)  // Only show tags that are used
+                .OrderByDescending(t => t.Count)
+                .ToListAsync();
+        }
+
+        public async Task<List<InventoryListItemDto>> GetInventoriesByTagAsync(string tagName)
+        {
+            return await _context.Inventories
+                .Include(i => i.Creator)
+                .Include(i => i.Category)
+                .Include(i => i.InventoryTags).ThenInclude(it => it.Tag)
+                .Include(i => i.Items)
+                .Where(i => i.InventoryTags.Any(it => it.Tag.Name == tagName))
+                .Select(i => MapToListItem(i))
+                .ToListAsync();
         }
     }
 }

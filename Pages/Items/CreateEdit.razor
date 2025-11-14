@@ -1,0 +1,508 @@
+@page "/inventories/{InventoryId:int}/items/create"
+@page "/inventories/{InventoryId:int}/items/edit/{ItemId:int}"
+@using NewLook.Services.Interfaces
+@using NewLook.Models.DTOs.Item
+@using NewLook.Models.DTOs.Inventory
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IItemService ItemService
+@inject IInventoryService InventoryService
+@inject ICustomIdService CustomIdService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+
+<PageTitle>@(IsEditMode ? "Edit Item" : "New Item") - NewLook</PageTitle>
+
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="/inventories">Inventories</a></li>
+                    <li class="breadcrumb-item"><a href="/inventories/@InventoryId">@inventory?.Title</a></li>
+                    <li class="breadcrumb-item active">@(IsEditMode ? "Edit Item" : "New Item")</li>
+                </ol>
+            </nav>
+
+            <h2 class="mb-4">@(IsEditMode ? "Edit Item" : "New Item")</h2>
+
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                    @errorMessage
+                    <button type="button" class="btn-close" @onclick="() => errorMessage = string.Empty"></button>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(successMessage))
+            {
+                <div class="alert alert-success alert-dismissible fade show" role="alert">
+                    <i class="bi bi-check-circle-fill me-2"></i>
+                    @successMessage
+                    <button type="button" class="btn-close" @onclick="() => successMessage = string.Empty"></button>
+                </div>
+            }
+
+            @if (isLoading)
+            {
+                <div class="text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            }
+            else if (inventory == null)
+            {
+                <div class="alert alert-warning">
+                    Inventory not found or you don't have access to it.
+                </div>
+            }
+            else
+            {
+                <div class="card shadow-sm">
+                    <div class="card-body">
+                        <EditForm Model="@model" OnValidSubmit="HandleSubmit">
+                            <DataAnnotationsValidator />
+
+                            <!-- Custom ID -->
+                            <div class="mb-4">
+                                <label class="form-label">
+                                    <strong>Custom ID</strong>
+                                    @if (!IsEditMode)
+                                    {
+                                        <span class="badge bg-info ms-2">Auto-generated</span>
+                                    }
+                                </label>
+                                @if (IsEditMode)
+                                {
+                                    <input type="text" class="form-control" @bind="model.CustomId" readonly />
+                                }
+                                else
+                                {
+                                    <div class="alert alert-light border">
+                                        <i class="bi bi-info-circle me-2"></i>
+                                        Custom ID will be generated automatically based on your inventory configuration:
+                                        <span class="font-monospace text-primary">@customIdPreview</span>
+                                    </div>
+                                }
+                            </div>
+
+                            <!-- Dynamic Custom Fields -->
+                            @if (inventory.CustomFields.Any())
+                            {
+                                <h5 class="mb-3">Custom Fields</h5>
+
+                                @for (int i = 0; i < inventory.CustomFields.Count; i++)
+                                {
+                                    var field = inventory.CustomFields[i];
+                                    var fieldIndex = i + 1;
+
+                                    <div class="mb-3">
+                                        <label class="form-label">
+                                            <strong>@field.Name</strong>
+                                            @if (!string.IsNullOrEmpty(field.Description))
+                                            {
+                                                <i class="bi bi-question-circle text-muted" title="@field.Description"></i>
+                                            }
+                                        </label>
+
+                                        @{
+                                            var stringFieldIndex = GetFieldIndex(field, "string");
+                                            var textFieldIndex = GetFieldIndex(field, "text");
+                                            var numberFieldIndex = GetFieldIndex(field, "number");
+                                            var linkFieldIndex = GetFieldIndex(field, "link");
+                                            var boolFieldIndex = GetFieldIndex(field, "bool");
+                                        }
+
+                                        @if (field.FieldType.ToLower() == "string")
+                                        {
+                                            @if (stringFieldIndex == 1)
+                                            {
+                                                <input type="text" class="form-control" @bind="model.CustomString1Value" placeholder="Enter @field.Name" />
+                                            }
+                                            else if (stringFieldIndex == 2)
+                                            {
+                                                <input type="text" class="form-control" @bind="model.CustomString2Value" placeholder="Enter @field.Name" />
+                                            }
+                                            else if (stringFieldIndex == 3)
+                                            {
+                                                <input type="text" class="form-control" @bind="model.CustomString3Value" placeholder="Enter @field.Name" />
+                                            }
+                                        }
+                                        else if (field.FieldType.ToLower() == "text")
+                                        {
+                                            @if (textFieldIndex == 1)
+                                            {
+                                                <textarea class="form-control" rows="3" @bind="model.CustomText1Value" placeholder="Enter @field.Name"></textarea>
+                                            }
+                                            else if (textFieldIndex == 2)
+                                            {
+                                                <textarea class="form-control" rows="3" @bind="model.CustomText2Value" placeholder="Enter @field.Name"></textarea>
+                                            }
+                                            else if (textFieldIndex == 3)
+                                            {
+                                                <textarea class="form-control" rows="3" @bind="model.CustomText3Value" placeholder="Enter @field.Name"></textarea>
+                                            }
+                                        }
+                                        else if (field.FieldType.ToLower() == "number")
+                                        {
+                                            @if (numberFieldIndex == 1)
+                                            {
+                                                <input type="number" step="0.01" class="form-control" @bind="model.CustomNumber1Value" placeholder="Enter @field.Name" />
+                                            }
+                                            else if (numberFieldIndex == 2)
+                                            {
+                                                <input type="number" step="0.01" class="form-control" @bind="model.CustomNumber2Value" placeholder="Enter @field.Name" />
+                                            }
+                                            else if (numberFieldIndex == 3)
+                                            {
+                                                <input type="number" step="0.01" class="form-control" @bind="model.CustomNumber3Value" placeholder="Enter @field.Name" />
+                                            }
+                                        }
+                                        else if (field.FieldType.ToLower() == "link")
+                                        {
+                                            @if (linkFieldIndex == 1)
+                                            {
+                                                <input type="url" class="form-control" @bind="model.CustomLink1Value" placeholder="https://example.com" />
+                                            }
+                                            else if (linkFieldIndex == 2)
+                                            {
+                                                <input type="url" class="form-control" @bind="model.CustomLink2Value" placeholder="https://example.com" />
+                                            }
+                                            else if (linkFieldIndex == 3)
+                                            {
+                                                <input type="url" class="form-control" @bind="model.CustomLink3Value" placeholder="https://example.com" />
+                                            }
+                                        }
+                                        else if (field.FieldType.ToLower() == "bool")
+                                        {
+                                            @if (boolFieldIndex == 1)
+                                            {
+                                                <div class="form-check form-switch">
+                                                    <input class="form-check-input" type="checkbox" @bind="model.CustomBool1Value" />
+                                                    <label class="form-check-label">Yes</label>
+                                                </div>
+                                            }
+                                            else if (boolFieldIndex == 2)
+                                            {
+                                                <div class="form-check form-switch">
+                                                    <input class="form-check-input" type="checkbox" @bind="model.CustomBool2Value" />
+                                                    <label class="form-check-label">Yes</label>
+                                                </div>
+                                            }
+                                            else if (boolFieldIndex == 3)
+                                            {
+                                                <div class="form-check form-switch">
+                                                    <input class="form-check-input" type="checkbox" @bind="model.CustomBool3Value" />
+                                                    <label class="form-check-label">Yes</label>
+                                                </div>
+                                            }
+                                        }
+
+                                        @if (!string.IsNullOrEmpty(field.Description))
+                                        {
+                                            <small class="text-muted">@field.Description</small>
+                                        }
+                                    </div>
+                                }
+                            }
+                            else
+                            {
+                                <div class="alert alert-info">
+                                    <i class="bi bi-info-circle me-2"></i>
+                                    No custom fields configured for this inventory. You can add custom fields in the inventory settings.
+                                </div>
+                            }
+
+                            <!-- Action Buttons -->
+                            <div class="d-flex justify-content-between mt-4">
+                                <button type="button" class="btn btn-outline-secondary" @onclick="Cancel">
+                                    <i class="bi bi-x-circle me-2"></i>Cancel
+                                </button>
+                                <button type="submit" class="btn btn-primary" disabled="@isSaving">
+                                    @if (isSaving)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                                        <span>Saving...</span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-save me-2"></i>
+                                        <span>@(IsEditMode ? "Update Item" : "Create Item")</span>
+                                    }
+                                </button>
+                            </div>
+                        </EditForm>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public int InventoryId { get; set; }
+
+    [Parameter]
+    public int? ItemId { get; set; }
+
+    private bool IsEditMode => ItemId.HasValue;
+    private bool isLoading = true;
+    private bool isSaving = false;
+    private string errorMessage = "";
+    private string successMessage = "";
+    private string customIdPreview = "Loading...";
+
+    private InventoryResponseDto? inventory;
+    private CreateItemDto model = new();
+
+    // Field tracking
+    private Dictionary<string, int> stringFieldIndexes = new();
+    private Dictionary<string, int> textFieldIndexes = new();
+    private Dictionary<string, int> numberFieldIndexes = new();
+    private Dictionary<string, int> linkFieldIndexes = new();
+    private Dictionary<string, int> boolFieldIndexes = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        isLoading = true;
+        try
+        {
+            var userId = await GetCurrentUserIdAsync();
+
+            // Load inventory
+            inventory = await InventoryService.GetInventoryByIdAsync(InventoryId, userId);
+
+            if (inventory == null)
+            {
+                errorMessage = "Inventory not found or you don't have access to it.";
+                return;
+            }
+
+            // Generate preview for new items
+            if (!IsEditMode)
+            {
+                model.InventoryId = InventoryId;
+                await GenerateCustomIdPreview();
+            }
+            else if (ItemId.HasValue)
+            {
+                await LoadItem(ItemId.Value);
+            }
+
+            // Map field indexes
+            MapFieldIndexes();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading data: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task GenerateCustomIdPreview()
+    {
+        try
+        {
+            customIdPreview = await CustomIdService.GenerateCustomIdAsync(InventoryId);
+        }
+        catch (Exception ex)
+        {
+            customIdPreview = $"Error: {ex.Message}";
+        }
+    }
+
+    private async Task LoadItem(int itemId)
+    {
+        try
+        {
+            var userId = await GetCurrentUserIdAsync();
+            var item = await ItemService.GetItemByIdAsync(itemId, userId);
+
+            if (item != null)
+            {
+                model = new CreateItemDto
+                {
+                    InventoryId = InventoryId,
+                    CustomId = item.CustomId,
+                    CustomString1Value = item.CustomString1Value,
+                    CustomString2Value = item.CustomString2Value,
+                    CustomString3Value = item.CustomString3Value,
+                    CustomText1Value = item.CustomText1Value,
+                    CustomText2Value = item.CustomText2Value,
+                    CustomText3Value = item.CustomText3Value,
+                    CustomNumber1Value = item.CustomNumber1Value,
+                    CustomNumber2Value = item.CustomNumber2Value,
+                    CustomNumber3Value = item.CustomNumber3Value,
+                    CustomLink1Value = item.CustomLink1Value,
+                    CustomLink2Value = item.CustomLink2Value,
+                    CustomLink3Value = item.CustomLink3Value,
+                    CustomBool1Value = item.CustomBool1Value,
+                    CustomBool2Value = item.CustomBool2Value,
+                    CustomBool3Value = item.CustomBool3Value
+                };
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading item: {ex.Message}";
+        }
+    }
+
+    private void MapFieldIndexes()
+    {
+        if (inventory == null) return;
+
+        int stringIndex = 1, textIndex = 1, numberIndex = 1, linkIndex = 1, boolIndex = 1;
+
+        foreach (var field in inventory.CustomFields)
+        {
+            switch (field.FieldType.ToLower())
+            {
+                case "string":
+                    if (stringIndex <= 3)
+                    {
+                        stringFieldIndexes[field.Name] = stringIndex;
+                        stringIndex++;
+                    }
+                    break;
+                case "text":
+                    if (textIndex <= 3)
+                    {
+                        textFieldIndexes[field.Name] = textIndex;
+                        textIndex++;
+                    }
+                    break;
+                case "number":
+                    if (numberIndex <= 3)
+                    {
+                        numberFieldIndexes[field.Name] = numberIndex;
+                        numberIndex++;
+                    }
+                    break;
+                case "link":
+                    if (linkIndex <= 3)
+                    {
+                        linkFieldIndexes[field.Name] = linkIndex;
+                        linkIndex++;
+                    }
+                    break;
+                case "bool":
+                    if (boolIndex <= 3)
+                    {
+                        boolFieldIndexes[field.Name] = boolIndex;
+                        boolIndex++;
+                    }
+                    break;
+            }
+        }
+    }
+
+    private int GetFieldIndex(CustomFieldDto field, string fieldType)
+    {
+        return fieldType.ToLower() switch
+        {
+            "string" => stringFieldIndexes.GetValueOrDefault(field.Name, 0),
+            "text" => textFieldIndexes.GetValueOrDefault(field.Name, 0),
+            "number" => numberFieldIndexes.GetValueOrDefault(field.Name, 0),
+            "link" => linkFieldIndexes.GetValueOrDefault(field.Name, 0),
+            "bool" => boolFieldIndexes.GetValueOrDefault(field.Name, 0),
+            _ => 0
+        };
+    }
+
+    private async Task HandleSubmit()
+    {
+        errorMessage = "";
+        successMessage = "";
+        isSaving = true;
+
+        try
+        {
+            var userId = await GetCurrentUserIdAsync();
+
+            if (IsEditMode && ItemId.HasValue)
+            {
+                var updateDto = new UpdateItemDto
+                {
+                    CustomString1Value = model.CustomString1Value,
+                    CustomString2Value = model.CustomString2Value,
+                    CustomString3Value = model.CustomString3Value,
+                    CustomText1Value = model.CustomText1Value,
+                    CustomText2Value = model.CustomText2Value,
+                    CustomText3Value = model.CustomText3Value,
+                    CustomNumber1Value = model.CustomNumber1Value,
+                    CustomNumber2Value = model.CustomNumber2Value,
+                    CustomNumber3Value = model.CustomNumber3Value,
+                    CustomLink1Value = model.CustomLink1Value,
+                    CustomLink2Value = model.CustomLink2Value,
+                    CustomLink3Value = model.CustomLink3Value,
+                    CustomBool1Value = model.CustomBool1Value,
+                    CustomBool2Value = model.CustomBool2Value,
+                    CustomBool3Value = model.CustomBool3Value,
+                    Version = 1
+                };
+
+                var (success, message, data) = await ItemService.UpdateItemAsync(ItemId.Value, updateDto, userId);
+
+                if (success)
+                {
+                    successMessage = "Item updated successfully!";
+                    await Task.Delay(1000);
+                    Navigation.NavigateTo($"/inventories/{InventoryId}");
+                }
+                else
+                {
+                    errorMessage = message;
+                }
+            }
+            else
+            {
+                // Generate Custom ID for new item
+                model.CustomId = await CustomIdService.GenerateCustomIdAsync(InventoryId);
+
+                var (success, message, data) = await ItemService.CreateItemAsync(model, userId);
+
+                if (success)
+                {
+                    successMessage = "Item created successfully!";
+                    await Task.Delay(1000);
+                    Navigation.NavigateTo($"/inventories/{InventoryId}");
+                }
+                else
+                {
+                    errorMessage = message;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo($"/inventories/{InventoryId}");
+    }
+
+    private async Task<int> GetCurrentUserIdAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userIdClaim = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
+        return userIdClaim != null ? int.Parse(userIdClaim.Value) : 0;
+    }
+}

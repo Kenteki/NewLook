@@ -1,8 +1,22 @@
 @page "/inventories/{Id:int}"
-@inject HttpClient Http
-@inject AuthStateService AuthState
+@implements IDisposable
+@using NewLook.Services.Interfaces
+@using NewLook.Services
+@using NewLook.Models.DTOs.Inventory
+@using NewLook.Models.DTOs.Item
+@using NewLook.Models.DTOs
+@using NewLook.Models.DTOs.Admin
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IInventoryService InventoryService
+@inject IItemService ItemService
+@inject ICustomIdService CustomIdService
+@inject ICommentService CommentService
+@inject IUserService UserService
+@inject CustomAuthenticationStateProvider AuthState
+@inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+@inject MarkdownService MarkdownService
 
 <PageTitle>@inventory?.Title - NewLook</PageTitle>
 
@@ -25,7 +39,7 @@
                 <div class="d-flex align-items-center">
                     @if (!string.IsNullOrEmpty(inventory.ImageUrl))
                     {
-                        <img src="@inventory.ImageUrl" alt="@inventory.Title" style="width: 80px; height: 80px; object-fit: cover; border-radius: 8px;" class="me-3" />
+                        <img src="@inventory.ImageUrl" alt="@inventory.Title" class="inventory-image-large me-3" />
                     }
                     <div>
                         <h2 class="mb-1">@inventory.Title</h2>
@@ -88,6 +102,11 @@
                 </button>
             </li>
             <li class="nav-item">
+                <button class="nav-link @(activeTab == "discussion" ? "active" : "")" @onclick='() => SetActiveTab("discussion")'>
+                    Discussion (@comments.Count)
+                </button>
+            </li>
+            <li class="nav-item">
                 <button class="nav-link @(activeTab == "stats" ? "active" : "")" @onclick='() => SetActiveTab("stats")'>
                     Statistics
                 </button>
@@ -114,10 +133,42 @@
                     }
                     else
                     {
+                        <!-- Bulk Actions Bar -->
+                        @if (selectedItemIds.Any())
+                        {
+                            <div class="alert alert-light border d-flex justify-content-between align-items-center mb-3">
+                                <div>
+                                    <strong>@selectedItemIds.Count</strong> item(s) selected
+                                </div>
+                                <div>
+                                    @if (isAuthenticated)
+                                    {
+                                        <button class="btn btn-sm btn-outline-danger me-2" @onclick="BulkToggleLike">
+                                            <i class="bi bi-heart"></i> Like Selected
+                                        </button>
+                                    }
+                                    @if (inventory.HasWriteAccess)
+                                    {
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="BulkDeleteItems">
+                                            <i class="bi bi-trash"></i> Delete Selected
+                                        </button>
+                                    }
+                                    <button class="btn btn-sm btn-outline-secondary ms-2" @onclick="ClearSelection">
+                                        Clear Selection
+                                    </button>
+                                </div>
+                            </div>
+                        }
+
                         <div class="table-responsive">
                             <table class="table table-hover">
                                 <thead>
                                     <tr>
+                                        <th class="th-checkbox">
+                                            <input type="checkbox" class="form-check-input"
+                                                   checked="@(items.Any() && selectedItemIds.Count == items.Count)"
+                                                   @onchange="ToggleSelectAll" />
+                                        </th>
                                         <th>Custom ID</th>
                                         @foreach (var field in inventory.CustomFields.Where(f => f.ShowInTable))
                                         {
@@ -125,14 +176,22 @@
                                         }
                                         <th>Created By</th>
                                         <th>Likes</th>
-                                        <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     @foreach (var item in items)
                                     {
-                                        <tr>
-                                            <td><strong>@item.CustomId</strong></td>
+                                        <tr class="@(selectedItemIds.Contains(item.Id) ? "table-active" : "")">
+                                            <td>
+                                                <input type="checkbox" class="form-check-input"
+                                                       checked="@selectedItemIds.Contains(item.Id)"
+                                                       @onchange="() => ToggleItemSelection(item.Id)" />
+                                            </td>
+                                            <td>
+                                                <a href="/items/@item.Id" class="text-decoration-none">
+                                                    <strong>@item.CustomId</strong>
+                                                </a>
+                                            </td>
                                             @foreach (var field in inventory.CustomFields.Where(f => f.ShowInTable))
                                             {
                                                 <td>@GetItemFieldValue(item, field)</td>
@@ -143,13 +202,6 @@
                                                         @onclick="() => ToggleLike(item.Id)" disabled="@(!isAuthenticated)">
                                                     <i class="bi bi-heart@(item.IsLikedByCurrentUser ? "-fill" : "")"></i> @item.LikeCount
                                                 </button>
-                                            </td>
-                                            <td>
-                                                <a href="/inventories/@Id/items/@item.Id" class="btn btn-sm btn-outline-primary">View</a>
-                                                @if (inventory.HasWriteAccess)
-                                                {
-                                                    <button class="btn btn-sm btn-outline-danger ms-1" @onclick="() => DeleteItem(item.Id)">Delete</button>
-                                                }
                                             </td>
                                         </tr>
                                     }
@@ -171,7 +223,7 @@
                     </div>
                     <div class="mb-3">
                         <label class="fw-bold">Description:</label>
-                        <div>@((MarkupString)MarkdownToHtml(inventory.Description))</div>
+                        <div class="markdown-content">@((MarkupString)MarkdownService.ToHtml(inventory.Description))</div>
                     </div>
                     <div class="mb-3">
                         <label class="fw-bold">Category:</label>
@@ -224,9 +276,29 @@
                     {
                         <div class="mb-4">
                             <label class="form-label">Grant Access</label>
-                            <div class="input-group">
-                                <input type="text" class="form-control" @bind="newAccessEmail" placeholder="Enter email or username" />
-                                <button class="btn btn-primary" @onclick="GrantAccess">Grant Access</button>
+                            <div class="position-relative">
+                                <div class="input-group">
+                                    <input type="text" class="form-control" value="@newAccessEmail" @oninput="OnUserAccessInput" placeholder="Enter email or username" />
+                                    <button class="btn btn-primary" @onclick="GrantAccess">Grant Access</button>
+                                </div>
+
+                                @if (showUserSuggestions && userSuggestions.Any())
+                                {
+                                    <div class="list-group position-absolute w-100 dropdown-autocomplete">
+                                        @foreach (var user in userSuggestions)
+                                        {
+                                            <button type="button" class="list-group-item list-group-item-action" @onclick="() => SelectUserSuggestion(user)">
+                                                <div class="d-flex justify-content-between align-items-center">
+                                                    <div>
+                                                        <strong>@user.Username</strong>
+                                                        <br />
+                                                        <small class="text-muted">@user.Email</small>
+                                                    </div>
+                                                </div>
+                                            </button>
+                                        }
+                                    </div>
+                                }
                             </div>
                         </div>
 
@@ -265,12 +337,104 @@
         {
             <div class="card shadow-sm">
                 <div class="card-body">
-                    <h5 class="mb-3">Custom ID Format</h5>
-                    <p class="text-muted">Configure how item IDs are generated</p>
-                    <div class="alert alert-info">
-                        <strong>Example ID:</strong> COMP-2025-E74FA329-001
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="mb-0">Custom ID Format</h5>
+                        @if (inventory.HasWriteAccess)
+                        {
+                            <a href="/inventories/edit/@Id?tab=customid" class="btn btn-primary btn-sm">
+                                <i class="bi bi-pencil"></i> Edit Configuration
+                            </a>
+                        }
                     </div>
-                    <p class="text-muted">Custom ID builder will be here. For now, IDs are auto-generated.</p>
+
+                    @if (customIdElements.Any())
+                    {
+                        <div class="alert alert-light border mb-4">
+                            <strong>Preview:</strong>
+                            <span class="font-monospace text-primary ms-2">@customIdPreview</span>
+                        </div>
+
+                        <h6 class="mb-3">ID Elements:</h6>
+                        <div class="list-group">
+                            @foreach (var element in customIdElements.OrderBy(e => e.Order))
+                            {
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div>
+                                            <span class="badge bg-primary me-2">@(element.Order + 1)</span>
+                                            <strong>@GetElementTypeName(element.ElementType)</strong>
+                                            @if (!string.IsNullOrEmpty(element.Value))
+                                            {
+                                                <span class="text-muted ms-2">
+                                                    <i class="bi bi-arrow-right"></i> @element.Value
+                                                </span>
+                                            }
+                                        </div>
+                                    </div>
+                                    <small class="text-muted d-block mt-1">
+                                        @GetElementDescription(element.ElementType)
+                                    </small>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle me-2"></i>
+                            No custom ID format configured. Items will use default sequential IDs.
+                            @if (inventory.HasWriteAccess)
+                            {
+                                <br />
+                                <a href="/inventories/edit/@Id?tab=customid" class="alert-link">Configure Custom ID Format</a>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+        else if (activeTab == "discussion")
+        {
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0">Discussion</h5>
+                </div>
+                <div class="card-body">
+                    @if (isAuthenticated)
+                    {
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">Add a comment:</label>
+                            <textarea class="form-control mb-2" rows="3" @bind="newCommentContent" placeholder="Write your comment... (Markdown supported)"></textarea>
+                            <button class="btn btn-primary" @onclick="AddComment" disabled="@string.IsNullOrWhiteSpace(newCommentContent)">
+                                <i class="bi bi-send"></i> Post Comment
+                            </button>
+                        </div>
+                        <hr />
+                    }
+
+                    @if (!comments.Any())
+                    {
+                        <p class="text-muted text-center py-4">No comments yet. Be the first to start the discussion!</p>
+                    }
+                    else
+                    {
+                        <div class="list-group">
+                            @foreach (var comment in comments)
+                            {
+                                <div class="list-group-item">
+                                    <div class="d-flex justify-content-between align-items-start mb-2">
+                                        <div>
+                                            <strong>@comment.AuthorUsername</strong>
+                                            <small class="text-muted ms-2">@comment.CreatedAt.ToLocalTime().ToString("MMM dd, yyyy HH:mm")</small>
+                                        </div>
+                                    </div>
+                                    <div class="markdown-content">
+                                        @((MarkupString)MarkdownService.ToHtml(comment.Content))
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
                 </div>
             </div>
         }
@@ -282,10 +446,10 @@
 
                     <div class="row mb-4">
                         <div class="col-md-4">
-                            <div class="card bg-light">
+                            <div class="card bg-light border-0">
                                 <div class="card-body text-center">
-                                    <h3 class="text-primary">@inventory.ItemCount</h3>
-                                    <p class="mb-0">Total Items</p>
+                                    <h3 class="text-primary mb-1">@inventory.ItemCount</h3>
+                                    <p class="mb-0 text-muted">Total Items</p>
                                 </div>
                             </div>
                         </div>
@@ -293,12 +457,70 @@
 
                     @if (stats != null && stats.FieldStats.Any())
                     {
-                        <h6>Field Statistics:</h6>
+                        <h6 class="mb-3">Field Statistics</h6>
+
                         @foreach (var fieldStat in stats.FieldStats)
                         {
-                            <div class="mb-3">
-                                <strong>@fieldStat.Key:</strong>
-                                <pre>@System.Text.Json.JsonSerializer.Serialize(fieldStat.Value, new System.Text.Json.JsonSerializerOptions { WriteIndented = true })</pre>
+                            <div class="card mb-3">
+                                <div class="card-header bg-light">
+                                    <strong>@fieldStat.Key</strong>
+                                </div>
+                                <div class="card-body">
+                                    @if (fieldStat.Value is NumericFieldStats numStats)
+                                    {
+                                        <div class="row">
+                                            <div class="col-md-3">
+                                                <div class="text-center p-2 border rounded">
+                                                    <small class="text-muted d-block">Minimum</small>
+                                                    <strong class="text-primary">@numStats.Min</strong>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <div class="text-center p-2 border rounded">
+                                                    <small class="text-muted d-block">Maximum</small>
+                                                    <strong class="text-primary">@numStats.Max</strong>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <div class="text-center p-2 border rounded">
+                                                    <small class="text-muted d-block">Average</small>
+                                                    <strong class="text-primary">@numStats.Average.ToString("F2")</strong>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <div class="text-center p-2 border rounded">
+                                                    <small class="text-muted d-block">Count</small>
+                                                    <strong class="text-primary">@numStats.Count</strong>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+                                    else if (fieldStat.Value is StringFieldStats strStats)
+                                    {
+                                        <div class="mb-3">
+                                            <small class="text-muted">Unique values: <strong>@strStats.UniqueCount</strong></small>
+                                        </div>
+                                        @if (strStats.TopValues.Any())
+                                        {
+                                            <div>
+                                                <small class="text-muted d-block mb-2">Most frequently used values:</small>
+                                                <div class="list-group">
+                                                    @foreach (var valueCount in strStats.TopValues)
+                                                    {
+                                                        var percentage = stats.TotalItems > 0 ? (valueCount.Count * 100.0 / stats.TotalItems) : 0;
+                                                        <div class="list-group-item d-flex justify-content-between align-items-center py-2">
+                                                            <span>@valueCount.Value</span>
+                                                            <span>
+                                                                <span class="badge bg-primary me-2">@valueCount.Count</span>
+                                                                <small class="text-muted">(@percentage.ToString("F1")%)</small>
+                                                            </span>
+                                                        </div>
+                                                    }
+                                                </div>
+                                            </div>
+                                        }
+                                    }
+                                </div>
                             </div>
                         }
                     }
@@ -320,16 +542,35 @@
     private bool isAuthenticated = false;
     private string activeTab = "items";
     private string newAccessEmail = "";
+    private string newCommentContent = "";
+    private List<UserSearchDto> userSuggestions = new();
+    private bool showUserSuggestions = false;
 
     private InventoryResponseDto? inventory;
     private List<ItemResponseDto> items = new();
-    private List<AccessDto> accessList = new();
-    private StatsDto? stats;
+    private List<InventoryAccessDto> accessList = new();
+    private InventoryStatsDto? stats;
+    private List<CustomIdElementDto> customIdElements = new();
+    private string customIdPreview = "";
+    private HashSet<int> selectedItemIds = new();
+    private List<CommentDto> comments = new();
+    private System.Threading.Timer? commentRefreshTimer;
 
     protected override async Task OnInitializedAsync()
     {
         isAuthenticated = await AuthState.IsAuthenticatedAsync();
         await LoadData();
+        await LoadComments();
+
+        // Start auto-refresh timer for comments (every 3 seconds)
+        commentRefreshTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadComments();
+                StateHasChanged();
+            });
+        }, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
     }
 
     private async Task LoadData()
@@ -337,26 +578,29 @@
         isLoading = true;
         try
         {
-            var token = await AuthState.GetTokenAsync();
-            if (!string.IsNullOrEmpty(token))
-            {
-                Http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-            }
+            var userId = await GetCurrentUserIdAsync();
 
             // Load inventory
-            inventory = await Http.GetFromJsonAsync<InventoryResponseDto>($"/api/inventory/{Id}");
+            inventory = await InventoryService.GetInventoryByIdAsync(Id, userId);
 
             // Load items
-            items = await Http.GetFromJsonAsync<List<ItemResponseDto>>($"/api/item/inventory/{Id}") ?? new();
+            items = await ItemService.GetItemsByInventoryIdAsync(Id, userId);
 
             // Load access list if has permission
-            if (inventory?.HasWriteAccess == true)
+            if (inventory?.HasWriteAccess == true && userId.HasValue)
             {
-                accessList = await Http.GetFromJsonAsync<List<AccessDto>>($"/api/inventory/{Id}/access") ?? new();
+                accessList = await InventoryService.GetInventoryAccessListAsync(Id, userId.Value);
             }
 
             // Load stats
-            stats = await Http.GetFromJsonAsync<StatsDto>($"/api/inventory/{Id}/stats");
+            stats = await InventoryService.GetInventoryStatsAsync(Id);
+
+            // Load Custom ID configuration
+            customIdElements = await InventoryService.GetCustomIdConfigurationAsync(Id);
+            if (customIdElements.Any())
+            {
+                customIdPreview = await CustomIdService.PreviewCustomIdAsync(customIdElements);
+            }
         }
         catch (Exception ex)
         {
@@ -366,6 +610,13 @@
         {
             isLoading = false;
         }
+    }
+
+    private async Task<int?> GetCurrentUserIdAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userIdClaim = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
+        return userIdClaim != null ? int.Parse(userIdClaim.Value) : (int?)null;
     }
 
     private void SetActiveTab(string tab)
@@ -380,13 +631,17 @@
 
         try
         {
-            var token = await AuthState.GetTokenAsync();
-            Http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            var userId = await GetCurrentUserIdAsync();
+            if (!userId.HasValue) return;
 
-            var response = await Http.DeleteAsync($"/api/inventory/{Id}");
-            if (response.IsSuccessStatusCode)
+            var (success, message) = await InventoryService.DeleteInventoryAsync(Id, userId.Value);
+            if (success)
             {
                 Navigation.NavigateTo("/dashboard");
+            }
+            else
+            {
+                Console.WriteLine($"Error deleting inventory: {message}");
             }
         }
         catch (Exception ex)
@@ -402,14 +657,18 @@
 
         try
         {
-            var token = await AuthState.GetTokenAsync();
-            Http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            var userId = await GetCurrentUserIdAsync();
+            if (!userId.HasValue) return;
 
-            var response = await Http.DeleteAsync($"/api/item/{itemId}");
-            if (response.IsSuccessStatusCode)
+            var (success, message) = await ItemService.DeleteItemAsync(itemId, userId.Value);
+            if (success)
             {
                 items.RemoveAll(i => i.Id == itemId);
                 StateHasChanged();
+            }
+            else
+            {
+                Console.WriteLine($"Error deleting item: {message}");
             }
         }
         catch (Exception ex)
@@ -420,31 +679,37 @@
 
     private async Task ToggleLike(int itemId)
     {
+        if (!isAuthenticated)
+            return;
+
         try
         {
-            var token = await AuthState.GetTokenAsync();
-            Http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            var userId = await GetCurrentUserIdAsync();
+            if (!userId.HasValue) return;
 
             var item = items.FirstOrDefault(i => i.Id == itemId);
             if (item == null) return;
 
-            HttpResponseMessage response;
             if (item.IsLikedByCurrentUser)
             {
-                response = await Http.DeleteAsync($"/api/item/{itemId}/like");
-                if (response.IsSuccessStatusCode)
+                // Unlike
+                var (success, message) = await ItemService.UnlikeItemAsync(itemId, userId.Value);
+                if (success)
                 {
-                    item.LikeCount--;
                     item.IsLikedByCurrentUser = false;
+                    item.LikeCount--;
+                    StateHasChanged();
                 }
             }
             else
             {
-                response = await Http.PostAsync($"/api/item/{itemId}/like", null);
-                if (response.IsSuccessStatusCode)
+                // Like
+                var (success, message) = await ItemService.LikeItemAsync(itemId, userId.Value);
+                if (success)
                 {
-                    item.LikeCount++;
                     item.IsLikedByCurrentUser = true;
+                    item.LikeCount++;
+                    StateHasChanged();
                 }
             }
         }
@@ -461,14 +726,20 @@
 
         try
         {
-            var token = await AuthState.GetTokenAsync();
-            Http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            var userId = await GetCurrentUserIdAsync();
+            if (!userId.HasValue) return;
 
-            var response = await Http.PostAsJsonAsync($"/api/inventory/{Id}/access", new { EmailOrUsername = newAccessEmail });
-            if (response.IsSuccessStatusCode)
+            var (success, message) = await InventoryService.GrantAccessAsync(Id, newAccessEmail, userId.Value);
+            if (success)
             {
                 newAccessEmail = "";
-                accessList = await Http.GetFromJsonAsync<List<AccessDto>>($"/api/inventory/{Id}/access") ?? new();
+                showUserSuggestions = false;
+                userSuggestions.Clear();
+                accessList = await InventoryService.GetInventoryAccessListAsync(Id, userId.Value);
+            }
+            else
+            {
+                Console.WriteLine($"Error granting access: {message}");
             }
         }
         catch (Exception ex)
@@ -477,17 +748,50 @@
         }
     }
 
-    private async Task RevokeAccess(int userId)
+    private async Task OnUserAccessInput(ChangeEventArgs e)
+    {
+        newAccessEmail = e.Value?.ToString() ?? "";
+
+        if (string.IsNullOrWhiteSpace(newAccessEmail) || newAccessEmail.Length < 2)
+        {
+            showUserSuggestions = false;
+            userSuggestions.Clear();
+            return;
+        }
+
+        try
+        {
+            userSuggestions = await UserService.SearchUsersAsync(newAccessEmail);
+            showUserSuggestions = userSuggestions.Any();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error searching users: {ex.Message}");
+        }
+    }
+
+    private void SelectUserSuggestion(UserSearchDto user)
+    {
+        newAccessEmail = user.Email;
+        showUserSuggestions = false;
+        userSuggestions.Clear();
+    }
+
+    private async Task RevokeAccess(int targetUserId)
     {
         try
         {
-            var token = await AuthState.GetTokenAsync();
-            Http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            var userId = await GetCurrentUserIdAsync();
+            if (!userId.HasValue) return;
 
-            var response = await Http.DeleteAsync($"/api/inventory/{Id}/access/{userId}");
-            if (response.IsSuccessStatusCode)
+            var (success, message) = await InventoryService.RevokeAccessAsync(Id, targetUserId, userId.Value);
+            if (success)
             {
-                accessList.RemoveAll(a => a.UserId == userId);
+                accessList.RemoveAll(a => a.UserId == targetUserId);
+            }
+            else
+            {
+                Console.WriteLine($"Error revoking access: {message}");
             }
         }
         catch (Exception ex)
@@ -519,77 +823,172 @@
         return value?.ToString() ?? "";
     }
 
-    private string MarkdownToHtml(string markdown)
-    {
-        if (string.IsNullOrEmpty(markdown))
-            return "";
 
-        // Simple markdown-like conversion (basic)
-        return markdown
-            .Replace("\n", "<br />")
-            .Replace("**", "<strong>", StringComparison.OrdinalIgnoreCase).Replace("**", "</strong>", StringComparison.OrdinalIgnoreCase);
+    private string GetElementTypeName(string elementType)
+    {
+        return elementType switch
+        {
+            "Fixed" => "Fixed Text",
+            "Random20" => "Random (20 chars)",
+            "Random32" => "Random (32 chars)",
+            "Random6" => "Random (6 digits)",
+            "Random9" => "Random (9 digits)",
+            "Guid" => "GUID",
+            "DateTime" => "Date/Time",
+            "Sequence" => "Sequential Number",
+            _ => elementType
+        };
     }
 
-    // DTOs
-    public class InventoryResponseDto
+    private string GetElementDescription(string elementType)
     {
-        public int Id { get; set; }
-        public string Title { get; set; } = "";
-        public string Description { get; set; } = "";
-        public string? ImageUrl { get; set; }
-        public string CreatorUsername { get; set; } = "";
-        public string? CategoryName { get; set; }
-        public bool IsPublic { get; set; }
-        public List<string> Tags { get; set; } = new();
-        public List<CustomFieldDto> CustomFields { get; set; } = new();
-        public int ItemCount { get; set; }
-        public bool HasWriteAccess { get; set; }
-        public int Version { get; set; }
+        return elementType switch
+        {
+            "Fixed" => "A fixed text value that appears in every ID",
+            "Random20" => "20 random alphanumeric characters (letters and numbers)",
+            "Random32" => "32 random alphanumeric characters (letters and numbers)",
+            "Random6" => "6 random numeric digits (000000-999999)",
+            "Random9" => "9 random numeric digits (000000000-999999999)",
+            "Guid" => "Globally unique identifier (UUID format)",
+            "DateTime" => "Current date and time in specified format",
+            "Sequence" => "Auto-incrementing number starting from specified value",
+            _ => "Custom element"
+        };
     }
 
-    public class CustomFieldDto
+    private void ToggleItemSelection(int itemId)
     {
-        public string FieldType { get; set; } = "";
-        public string Name { get; set; } = "";
-        public string? Description { get; set; }
-        public bool ShowInTable { get; set; }
+        if (selectedItemIds.Contains(itemId))
+        {
+            selectedItemIds.Remove(itemId);
+        }
+        else
+        {
+            selectedItemIds.Add(itemId);
+        }
     }
 
-    public class ItemResponseDto
+    private void ToggleSelectAll()
     {
-        public int Id { get; set; }
-        public string CustomId { get; set; } = "";
-        public string? CustomString1Value { get; set; }
-        public string? CustomString2Value { get; set; }
-        public string? CustomString3Value { get; set; }
-        public string? CustomText1Value { get; set; }
-        public string? CustomText2Value { get; set; }
-        public string? CustomText3Value { get; set; }
-        public decimal? CustomNumber1Value { get; set; }
-        public decimal? CustomNumber2Value { get; set; }
-        public decimal? CustomNumber3Value { get; set; }
-        public string? CustomLink1Value { get; set; }
-        public string? CustomLink2Value { get; set; }
-        public string? CustomLink3Value { get; set; }
-        public bool? CustomBool1Value { get; set; }
-        public bool? CustomBool2Value { get; set; }
-        public bool? CustomBool3Value { get; set; }
-        public string CreatedByUsername { get; set; } = "";
-        public int LikeCount { get; set; }
-        public bool IsLikedByCurrentUser { get; set; }
-        public int Version { get; set; }
+        if (selectedItemIds.Count == items.Count)
+        {
+            selectedItemIds.Clear();
+        }
+        else
+        {
+            selectedItemIds = new HashSet<int>(items.Select(i => i.Id));
+        }
     }
 
-    public class AccessDto
+    private void ClearSelection()
     {
-        public int UserId { get; set; }
-        public string Username { get; set; } = "";
-        public string Email { get; set; } = "";
+        selectedItemIds.Clear();
     }
 
-    public class StatsDto
+    private async Task BulkDeleteItems()
     {
-        public int TotalItems { get; set; }
-        public Dictionary<string, object> FieldStats { get; set; } = new();
+        if (!selectedItemIds.Any())
+            return;
+
+        var count = selectedItemIds.Count;
+        if (!await JS.InvokeAsync<bool>("confirm", $"Are you sure you want to delete {count} selected item(s)?"))
+            return;
+
+        try
+        {
+            var userId = await GetCurrentUserIdAsync();
+            if (!userId.HasValue) return;
+
+            var itemIdsToDelete = selectedItemIds.ToList();
+            foreach (var itemId in itemIdsToDelete)
+            {
+                var (success, message) = await ItemService.DeleteItemAsync(itemId, userId.Value);
+                if (success)
+                {
+                    items.RemoveAll(i => i.Id == itemId);
+                }
+                else
+                {
+                    Console.WriteLine($"Error deleting item {itemId}: {message}");
+                }
+            }
+
+            selectedItemIds.Clear();
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error bulk deleting items: {ex.Message}");
+        }
     }
+
+    private async Task BulkToggleLike()
+    {
+        if (!selectedItemIds.Any())
+            return;
+
+        try
+        {
+            foreach (var itemId in selectedItemIds)
+            {
+                await ToggleLike(itemId);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error bulk liking items: {ex.Message}");
+        }
+    }
+
+    private async Task LoadComments()
+    {
+        try
+        {
+            comments = await CommentService.GetCommentsByInventoryIdAsync(Id);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading comments: {ex.Message}");
+        }
+    }
+
+    private async Task AddComment()
+    {
+        if (string.IsNullOrWhiteSpace(newCommentContent))
+            return;
+
+        try
+        {
+            var userId = await GetCurrentUserIdAsync();
+            if (!userId.HasValue) return;
+
+            var createDto = new CreateCommentDto
+            {
+                InventoryId = Id,
+                Content = newCommentContent
+            };
+
+            var (success, message, comment) = await CommentService.AddCommentAsync(createDto, userId.Value);
+            if (success && comment != null)
+            {
+                newCommentContent = "";
+                comments.Add(comment);
+                StateHasChanged();
+            }
+            else
+            {
+                Console.WriteLine($"Error adding comment: {message}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error adding comment: {ex.Message}");
+        }
+    }
+
+    public void Dispose()
+    {
+        commentRefreshTimer?.Dispose();
+    }
+
 }

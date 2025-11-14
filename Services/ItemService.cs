@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using NewLook.Data;
-using NewLook.Models.DTOs.Inventory.Interfaces;
 using NewLook.Models.DTOs.Item;
 using NewLook.Models.Entities;
 using NewLook.Services.Interfaces;

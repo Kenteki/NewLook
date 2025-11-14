@@ -1,0 +1,393 @@
+@page "/admin"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using NewLook.Services.Interfaces
+@using NewLook.Models.DTOs.Admin
+@using NewLook.Services
+@attribute [Authorize]
+@inject IUserService UserService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<PageTitle>Admin Panel - NewLook</PageTitle>
+
+<div class="container mt-4">
+    @if (!isLoading && !isAdmin)
+    {
+        <div class="alert alert-danger">
+            <h4>Access Denied</h4>
+            <p>You don't have permission to access this page. Only administrators can view this page.</p>
+            <a href="/" class="btn btn-primary">Go to Home</a>
+        </div>
+    }
+    else if (isAdmin)
+    {
+        <div class="row mb-4">
+            <div class="col-md-8">
+                <h2><i class="bi bi-shield-lock me-2"></i>Admin Panel</h2>
+                <p class="text-muted">Manage users and system settings</p>
+            </div>
+        </div>
+
+        @if (isLoading)
+        {
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status"></div>
+            </div>
+        }
+        else
+        {
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="card shadow-sm">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">
+                                <i class="bi bi-people me-2"></i>User Management (@users.Count users)
+                            </h5>
+                            <div class="input-group input-group-narrow">
+                                <input type="text" class="form-control" placeholder="Filter by name or email..."
+                                       @bind="filterQuery" @bind:event="oninput" />
+                            </div>
+                        </div>
+                        <div class="card-body p-0">
+                            @if (!filteredUsers.Any())
+                            {
+                                <div class="p-4 text-center text-muted">
+                                    No users found.
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="table-responsive">
+                                    <table class="table table-hover mb-0">
+                                        <thead class="table-light">
+                                            <tr>
+                                                <th>ID</th>
+                                                <th>Username</th>
+                                                <th>Email</th>
+                                                <th>Roles</th>
+                                                <th>Status</th>
+                                                <th>Inventories</th>
+                                                <th>Joined</th>
+                                                <th class="th-actions-wide">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var user in filteredUsers)
+                                            {
+                                                <tr>
+                                                    <td><span class="badge bg-secondary">@user.Id</span></td>
+                                                    <td><strong>@user.Username</strong></td>
+                                                    <td>@user.Email</td>
+                                                    <td>
+                                                        @if (user.Roles.Any())
+                                                        {
+                                                            @foreach (var role in user.Roles)
+                                                            {
+                                                                <span class="badge @(role == "Admin" ? "bg-danger" : "bg-info") me-1">@role</span>
+                                                            }
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="text-muted">User</span>
+                                                        }
+                                                    </td>
+                                                    <td>
+                                                        @if (user.IsBlocked)
+                                                        {
+                                                            <span class="badge bg-danger">Blocked</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="badge bg-success">Active</span>
+                                                        }
+                                                    </td>
+                                                    <td>
+                                                        <span class="badge bg-primary">@user.InventoryCount</span>
+                                                    </td>
+                                                    <td>
+                                                        <small class="text-muted">@user.CreatedAt.ToString("MMM dd, yyyy")</small>
+                                                    </td>
+                                                    <td>
+                                                        <div class="btn-group btn-group-sm" role="group">
+                                                            @if (user.IsBlocked)
+                                                            {
+                                                                <button class="btn btn-outline-success" @onclick="() => UnblockUser(user.Id)" title="Unblock user">
+                                                                    <i class="bi bi-unlock"></i>
+                                                                </button>
+                                                            }
+                                                            else
+                                                            {
+                                                                <button class="btn btn-outline-warning" @onclick="() => BlockUser(user.Id)" title="Block user">
+                                                                    <i class="bi bi-lock"></i>
+                                                                </button>
+                                                            }
+
+                                                            @if (user.Roles.Contains("Admin"))
+                                                            {
+                                                                <button class="btn btn-outline-secondary" @onclick="() => RemoveAdmin(user.Id)" title="Remove admin role">
+                                                                    <i class="bi bi-shield-slash"></i>
+                                                                </button>
+                                                            }
+                                                            else
+                                                            {
+                                                                <button class="btn btn-outline-info" @onclick="() => MakeAdmin(user.Id)" title="Make admin">
+                                                                    <i class="bi bi-shield-check"></i>
+                                                                </button>
+                                                            }
+
+                                                            <button class="btn btn-outline-danger" @onclick="() => DeleteUser(user.Id)" title="Delete user">
+                                                                <i class="bi bi-trash"></i>
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Statistics -->
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="card bg-primary text-white">
+                        <div class="card-body text-center">
+                            <h3>@users.Count</h3>
+                            <p class="mb-0">Total Users</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-danger text-white">
+                        <div class="card-body text-center">
+                            <h3>@users.Count(u => u.Roles.Contains("Admin"))</h3>
+                            <p class="mb-0">Administrators</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-warning text-white">
+                        <div class="card-body text-center">
+                            <h3>@users.Count(u => u.IsBlocked)</h3>
+                            <p class="mb-0">Blocked Users</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-success text-white">
+                        <div class="card-body text-center">
+                            <h3>@users.Count(u => !u.IsBlocked)</h3>
+                            <p class="mb-0">Active Users</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private bool isLoading = true;
+    private bool isAdmin = false;
+    private int currentUserId = 0;
+    private List<UserManagementDto> users = new();
+    private string filterQuery = "";
+
+    private List<UserManagementDto> filteredUsers => ApplyFilter(users, filterQuery);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CheckAdminAccess();
+        if (isAdmin)
+        {
+            await LoadUsers();
+        }
+    }
+
+    private async Task CheckAdminAccess()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userIdClaim = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
+
+            if (userIdClaim != null)
+            {
+                currentUserId = int.Parse(userIdClaim.Value);
+                isAdmin = await UserService.IsUserAdminAsync(currentUserId);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error checking admin access: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadUsers()
+    {
+        isLoading = true;
+        try
+        {
+            users = await UserService.GetAllUsersAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading users: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private List<UserManagementDto> ApplyFilter(List<UserManagementDto> userList, string filter)
+    {
+        if (string.IsNullOrWhiteSpace(filter))
+            return userList;
+
+        var lowerFilter = filter.ToLower();
+        return userList.Where(u =>
+            u.Username.ToLower().Contains(lowerFilter) ||
+            u.Email.ToLower().Contains(lowerFilter)
+        ).ToList();
+    }
+
+    private async Task BlockUser(int userId)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "Are you sure you want to block this user?"))
+            return;
+
+        try
+        {
+            var (success, message) = await UserService.BlockUserAsync(userId, currentUserId);
+            if (success)
+            {
+                await LoadUsers();
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", message);
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+    }
+
+    private async Task UnblockUser(int userId)
+    {
+        try
+        {
+            var (success, message) = await UserService.UnblockUserAsync(userId, currentUserId);
+            if (success)
+            {
+                await LoadUsers();
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", message);
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+    }
+
+    private async Task DeleteUser(int userId)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "Are you sure you want to delete this user? This action cannot be undone and will delete all their inventories."))
+            return;
+
+        try
+        {
+            var (success, message) = await UserService.DeleteUserAsync(userId, currentUserId);
+            if (success)
+            {
+                await LoadUsers();
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", message);
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+    }
+
+    private async Task MakeAdmin(int userId)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "Are you sure you want to grant admin access to this user?"))
+            return;
+
+        try
+        {
+            var (success, message) = await UserService.AddAdminRoleAsync(userId, currentUserId);
+            if (success)
+            {
+                await LoadUsers();
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", message);
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+    }
+
+    private async Task RemoveAdmin(int userId)
+    {
+        if (userId == currentUserId)
+        {
+            if (!await JS.InvokeAsync<bool>("confirm", "WARNING: You are about to remove admin access from yourself! You will lose access to this page. Are you sure?"))
+                return;
+        }
+        else
+        {
+            if (!await JS.InvokeAsync<bool>("confirm", "Are you sure you want to remove admin access from this user?"))
+                return;
+        }
+
+        try
+        {
+            var (success, message) = await UserService.RemoveAdminRoleAsync(userId, currentUserId);
+            if (success)
+            {
+                if (userId == currentUserId)
+                {
+                    // Redirect to home since user removed their own admin access
+                    await JS.InvokeVoidAsync("alert", "You have removed your own admin access. Redirecting to home...");
+                    Navigation.NavigateTo("/", true);
+                }
+                else
+                {
+                    await LoadUsers();
+                }
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("alert", message);
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+    }
+}

@@ -1,13 +1,9 @@
 using SendGrid;
 using SendGrid.Helpers.Mail;
+using NewLook.Services.Interfaces;
 
 namespace NewLook.Services
 {
-    public interface IEmailService
-    {
-        Task<bool> SendVerificationEmailAsync(string toEmail, string username, string verificationLink);
-    }
-
     public class EmailService : IEmailService
     {
         private readonly IConfiguration _configuration;
@@ -19,7 +15,7 @@ namespace NewLook.Services
             _logger = logger;
         }
 
-        public async Task<bool> SendVerificationEmailAsync(string toEmail, string username, string verificationLink)
+        public async Task SendVerificationEmailAsync(string toEmail, string username, string verificationLink)
         {
             try
             {
@@ -27,7 +23,7 @@ namespace NewLook.Services
                 if (string.IsNullOrEmpty(apiKey))
                 {
                     _logger.LogWarning("SendGrid API key not configured");
-                    return false;
+                    return;
                 }
 
                 var client = new SendGridClient(apiKey);
@@ -75,19 +71,28 @@ namespace NewLook.Services
                 if (response.StatusCode == System.Net.HttpStatusCode.Accepted)
                 {
                     _logger.LogInformation($"Verification email sent to {toEmail}");
-                    return true;
                 }
                 else
                 {
                     _logger.LogWarning($"Failed to send email. Status: {response.StatusCode}");
-                    return false;
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error sending verification email");
-                return false;
             }
+        }
+
+        public async Task SendPasswordResetEmailAsync(string toEmail, string username, string resetLink)
+        {
+            // TODO: Implement password reset email
+            await Task.CompletedTask;
+        }
+
+        public async Task SendWelcomeEmailAsync(string toEmail, string username)
+        {
+            // TODO: Implement welcome email
+            await Task.CompletedTask;
         }
     }
 }

@@ -1,281 +1,672 @@
-@page "/inventories/{InventoryId:int}/items/create"
-@page "/inventories/{InventoryId:int}/items/{ItemId:int}"
-@inject HttpClient Http
-@inject AuthStateService AuthState
+@page "/inventories/create"
+@page "/inventories/edit/{Id:int}"
+@implements IDisposable
+@using NewLook.Services.Interfaces
+@using NewLook.Services
+@using NewLook.Models.DTOs.Inventory
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IInventoryService InventoryService
+@inject ICustomIdService CustomIdService
+@inject CustomAuthenticationStateProvider AuthState
+@inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@inject ICloudinaryService CloudinaryService
 
-<PageTitle>@(IsEditMode ? "Edit" : "Add") Item - NewLook</PageTitle>
+<PageTitle>@(IsEditMode ? "Edit" : "New") Inventory - NewLook</PageTitle>
 
-<div class="container mt-4">
-    <div class="row justify-content-center">
-        <div class="col-lg-8">
-            @if (isLoading)
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h2>@(IsEditMode ? model.Title : "New Inventory")</h2>
+                @if (autoSaveMessage != "")
+                {
+                    <span class="badge bg-success">@autoSaveMessage</span>
+                }
+            </div>
+
+            @if (!string.IsNullOrEmpty(errorMessage))
             {
-                <div class="text-center py-5">
-                    <div class="spinner-border text-primary"></div>
+                <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    @errorMessage
+                    <button type="button" class="btn-close" @onclick="() => errorMessage = string.Empty"></button>
                 </div>
             }
-            else if (inventory == null)
+
+            @if (!string.IsNullOrEmpty(successMessage))
             {
-                <div class="alert alert-danger">Inventory not found</div>
+                <div class="alert alert-success alert-dismissible fade show" role="alert">
+                    @successMessage
+                    <button type="button" class="btn-close" @onclick="() => successMessage = string.Empty"></button>
+                </div>
             }
-            else
-            {
-                <div class="card shadow-sm">
-                    <div class="card-header bg-primary text-white">
-                        <h4 class="mb-0">@(IsEditMode ? "Edit" : "Add") Item to @inventory.Title</h4>
+
+            <!-- Tabs -->
+            <ul class="nav nav-tabs mb-4" role="tablist">
+                @if (IsEditMode)
+                {
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link @(activeTab == "items" ? "active" : "")" @onclick='() => activeTab = "items"' type="button">
+                            Items
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link @(activeTab == "chat" ? "active" : "")" @onclick='() => activeTab = "chat"' type="button">
+                            Chat
+                        </button>
+                    </li>
+                }
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link @(activeTab == "settings" ? "active" : "")" @onclick='() => activeTab = "settings"' type="button">
+                        Settings
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link @(activeTab == "customid" ? "active" : "")" @onclick='() => activeTab = "customid"' type="button">
+                        Custom ID
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link @(activeTab == "fields" ? "active" : "")" @onclick='() => activeTab = "fields"' type="button">
+                        Fields
+                    </button>
+                </li>
+                @if (IsEditMode)
+                {
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link @(activeTab == "access" ? "active" : "")" @onclick='() => activeTab = "access"' type="button">
+                            Access
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link @(activeTab == "stats" ? "active" : "")" @onclick='() => activeTab = "stats"' type="button">
+                            Stats
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link @(activeTab == "export" ? "active" : "")" @onclick='() => activeTab = "export"' type="button">
+                            Export
+                        </button>
+                    </li>
+                }
+            </ul>
+
+            <!-- Tab Content -->
+            <div class="tab-content">
+                @if (activeTab == "items" && IsEditMode)
+                {
+                    <div class="card">
+                        <div class="card-body">
+                            <h5>Items in this inventory</h5>
+                            <p class="text-muted">Manage items in this inventory</p>
+                            <a href="/inventories/@Id" class="btn btn-primary">View Items</a>
+                        </div>
                     </div>
-                    <div class="card-body">
-                        @if (!string.IsNullOrEmpty(errorMessage))
-                        {
-                            <div class="alert alert-danger">@errorMessage</div>
-                        }
+                }
+                else if (activeTab == "chat" && IsEditMode)
+                {
+                    <div class="card">
+                        <div class="card-body">
+                            <h5>Discussion</h5>
+                            <p class="text-muted">Chat functionality coming soon...</p>
+                        </div>
+                    </div>
+                }
+                else if (activeTab == "settings")
+                {
+                    <EditForm Model="@model" OnValidSubmit="HandleSaveSettings">
+                        <DataAnnotationsValidator />
 
-                        <EditForm Model="@model" OnValidSubmit="HandleSubmit">
-                            <!-- Custom ID -->
-                            <div class="mb-4">
-                                <h5>Item ID</h5>
+                        <div class="card">
+                            <div class="card-body">
+                                <h5 class="card-title">General Settings</h5>
                                 <hr />
+
                                 <div class="mb-3">
-                                    <label class="form-label">Custom ID</label>
-                                    <InputText class="form-control" @bind-Value="model.CustomId" placeholder="Leave empty for auto-generation" />
-                                    <small class="text-muted">Unique identifier for this item</small>
+                                    <label class="form-label">Title *</label>
+                                    <InputText class="form-control" @bind-Value="model.Title" @oninput="MarkAsChanged" placeholder="Enter inventory title" />
+                                    <ValidationMessage For="@(() => model.Title)" />
                                 </div>
-                            </div>
 
-                            <!-- Dynamic Fields based on inventory configuration -->
-                            @if (inventory.CustomFields.Any())
-                            {
-                                <div class="mb-4">
-                                    <h5>Item Details</h5>
-                                    <hr />
+                                <div class="mb-3">
+                                    <label class="form-label">Description</label>
+                                    <InputTextArea class="form-control" @bind-Value="model.Description" @oninput="MarkAsChanged" rows="5" placeholder="Describe your inventory (Markdown supported)" />
+                                    <small class="text-muted">You can use Markdown for formatting</small>
+                                </div>
 
-                                    @{
-                                        int stringIndex = 1, textIndex = 1, numberIndex = 1, linkIndex = 1, boolIndex = 1;
+                                <div class="mb-3">
+                                    <label class="form-label">Image</label>
+
+                                    @if (!string.IsNullOrEmpty(model.ImageUrl))
+                                    {
+                                        <div class="mb-2">
+                                            <img src="@model.ImageUrl" alt="Inventory image" class="img-thumbnail inventory-image-preview" />
+                                            <button type="button" class="btn btn-sm btn-outline-danger ms-2" @onclick="RemoveImage">
+                                                <i class="bi bi-trash"></i> Remove
+                                            </button>
+                                        </div>
                                     }
 
-                                    @foreach (var field in inventory.CustomFields)
+                                    <div class="input-group mb-2">
+                                        <InputFile class="form-control" OnChange="HandleImageUpload" accept="image/*" disabled="@isUploadingImage" />
+                                        @if (isUploadingImage)
+                                        {
+                                            <span class="input-group-text">
+                                                <span class="spinner-border spinner-border-sm"></span>
+                                            </span>
+                                        }
+                                    </div>
+
+                                    <div class="mb-2">
+                                        <small class="text-muted">Or enter an image URL:</small>
+                                        <InputText class="form-control" @bind-Value="model.ImageUrl" @oninput="MarkAsChanged" placeholder="https://example.com/image.jpg" />
+                                    </div>
+
+                                    @if (!string.IsNullOrEmpty(imageUploadError))
                                     {
-                                        <div class="mb-3">
-                                            <label class="form-label">
-                                                @field.Name
-                                                @if (!string.IsNullOrEmpty(field.Description))
+                                        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                                            @imageUploadError
+                                            <button type="button" class="btn-close" @onclick="() => imageUploadError = string.Empty"></button>
+                                        </div>
+                                    }
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Category</label>
+                                    <InputSelect class="form-select" @bind-Value="model.CategoryId" TValue="int?">
+                                        <option value="">-- Select Category --</option>
+                                        <option value="1">Equipment</option>
+                                        <option value="2">Furniture</option>
+                                        <option value="3">Books</option>
+                                        <option value="4">Documents</option>
+                                        <option value="5">Other</option>
+                                    </InputSelect>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Tags</label>
+                                    <div class="position-relative">
+                                        <div class="input-group mb-2">
+                                            <input type="text" class="form-control" value="@newTag" @oninput="OnTagInput" @onkeypress="HandleTagKeyPress" placeholder="Enter a tag and press Enter" />
+                                            <button type="button" class="btn btn-outline-secondary" @onclick="AddTag">Add</button>
+                                        </div>
+
+                                        @if (showTagSuggestions && filteredTagSuggestions.Any())
+                                        {
+                                            <div class="list-group position-absolute w-100 dropdown-autocomplete-tags">
+                                                @foreach (var suggestion in filteredTagSuggestions)
                                                 {
-                                                    <small class="text-muted">(@field.Description)</small>
+                                                    <button type="button" class="list-group-item list-group-item-action" @onclick="() => SelectTagSuggestion(suggestion)">
+                                                        @suggestion
+                                                    </button>
                                                 }
-                                            </label>
+                                            </div>
+                                        }
+                                    </div>
 
-                                            @{
-                                                var currentIndex = field.FieldType.ToLower() switch
-                                                {
-                                                    "string" => stringIndex++,
-                                                    "text" => textIndex++,
-                                                    "number" => numberIndex++,
-                                                    "link" => linkIndex++,
-                                                    "bool" => boolIndex++,
-                                                    _ => 0
-                                                };
-                                            }
-
-                                            @switch (field.FieldType.ToLower())
+                                    @if (model.Tags.Any())
+                                    {
+                                        <div class="mt-2">
+                                            @foreach (var tag in model.Tags)
                                             {
-                                                case "string":
-                                                    if (currentIndex == 1)
-                                                    {
-                                                        <InputText class="form-control" @bind-Value="model.CustomString1Value" />
-                                                    }
-                                                    else if (currentIndex == 2)
-                                                    {
-                                                        <InputText class="form-control" @bind-Value="model.CustomString2Value" />
-                                                    }
-                                                    else if (currentIndex == 3)
-                                                    {
-                                                        <InputText class="form-control" @bind-Value="model.CustomString3Value" />
-                                                    }
-                                                    break;
-
-                                                case "text":
-                                                    if (currentIndex == 1)
-                                                    {
-                                                        <InputTextArea class="form-control" rows="3" @bind-Value="model.CustomText1Value" />
-                                                    }
-                                                    else if (currentIndex == 2)
-                                                    {
-                                                        <InputTextArea class="form-control" rows="3" @bind-Value="model.CustomText2Value" />
-                                                    }
-                                                    else if (currentIndex == 3)
-                                                    {
-                                                        <InputTextArea class="form-control" rows="3" @bind-Value="model.CustomText3Value" />
-                                                    }
-                                                    break;
-
-                                                case "number":
-                                                    if (currentIndex == 1)
-                                                    {
-                                                        <InputNumber class="form-control" @bind-Value="model.CustomNumber1Value" TValue="decimal?" />
-                                                    }
-                                                    else if (currentIndex == 2)
-                                                    {
-                                                        <InputNumber class="form-control" @bind-Value="model.CustomNumber2Value" TValue="decimal?" />
-                                                    }
-                                                    else if (currentIndex == 3)
-                                                    {
-                                                        <InputNumber class="form-control" @bind-Value="model.CustomNumber3Value" TValue="decimal?" />
-                                                    }
-                                                    break;
-
-                                                case "link":
-                                                    if (currentIndex == 1)
-                                                    {
-                                                        <InputText class="form-control" type="url" @bind-Value="model.CustomLink1Value" placeholder="https://example.com" />
-                                                    }
-                                                    else if (currentIndex == 2)
-                                                    {
-                                                        <InputText class="form-control" type="url" @bind-Value="model.CustomLink2Value" placeholder="https://example.com" />
-                                                    }
-                                                    else if (currentIndex == 3)
-                                                    {
-                                                        <InputText class="form-control" type="url" @bind-Value="model.CustomLink3Value" placeholder="https://example.com" />
-                                                    }
-                                                    break;
-
-                                                case "bool":
-                                                    if (currentIndex == 1)
-                                                    {
-                                                        <div class="form-check">
-                                                            <InputCheckbox class="form-check-input" @bind-Value="model.CustomBool1Value" TValue="bool?" />
-                                                            <label class="form-check-label">@field.Name</label>
-                                                        </div>
-                                                    }
-                                                    else if (currentIndex == 2)
-                                                    {
-                                                        <div class="form-check">
-                                                            <InputCheckbox class="form-check-input" @bind-Value="model.CustomBool2Value" TValue="bool?" />
-                                                            <label class="form-check-label">@field.Name</label>
-                                                        </div>
-                                                    }
-                                                    else if (currentIndex == 3)
-                                                    {
-                                                        <div class="form-check">
-                                                            <InputCheckbox class="form-check-input" @bind-Value="model.CustomBool3Value" TValue="bool?" />
-                                                            <label class="form-check-label">@field.Name</label>
-                                                        </div>
-                                                    }
-                                                    break;
+                                                <span class="badge bg-primary me-2 mb-2">
+                                                    @tag
+                                                    <button type="button" class="btn-close btn-close-white btn-sm btn-close-xs ms-1" @onclick="() => RemoveTag(tag)"></button>
+                                                </span>
                                             }
                                         </div>
                                     }
                                 </div>
+
+                                <div class="mb-3">
+                                    <div class="form-check">
+                                        <InputCheckbox class="form-check-input" @bind-Value="model.IsPublic" id="isPublic" />
+                                        <label class="form-check-label" for="isPublic">
+                                            Make this inventory public (anyone authenticated can add items)
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div class="d-flex justify-content-between">
+                                    <button type="button" class="btn btn-outline-secondary" @onclick="GoBack">Cancel</button>
+                                    <button type="submit" class="btn btn-primary" disabled="@isSaving">
+                                        @if (isSaving)
+                                        {
+                                            <span class="spinner-border spinner-border-sm me-2"></span>
+                                        }
+                                        @(IsEditMode ? "Update" : "Create") Inventory
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </EditForm>
+                }
+                else if (activeTab == "customid")
+                {
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title mb-3">Custom ID Configuration</h5>
+                            <p class="text-muted small">
+                                You can set up items with inventory numbers in your preferred format.<br />
+                                To create a format, add new elements, edit them, drag to reorder, or drag elements out of the form to delete them.
+                            </p>
+
+                            <!-- Preview -->
+                            @if (customIdElements.Any())
+                            {
+                                <div class="alert alert-light border">
+                                    <strong>Example:</strong>
+                                    <span class="font-monospace">@customIdPreview</span>
+                                </div>
                             }
 
-                            <!-- Actions -->
-                            <div class="d-flex justify-content-between">
-                                <button type="button" class="btn btn-outline-secondary" @onclick="GoBack">Cancel</button>
-                                <button type="submit" class="btn btn-primary" disabled="@isSaving">
+                            <!-- ID Elements -->
+                            @if (customIdElements.Any())
+                            {
+                                <div class="alert alert-info mb-3">
+                                    <i class="bi bi-info-circle"></i> <strong>Tip:</strong> Drag and drop elements to reorder them
+                                </div>
+                            }
+
+                            <div class="mb-4" id="customIdElementsContainer">
+                                @for (int i = 0; i < customIdElements.Count; i++)
+                                {
+                                    var index = i;
+                                    var element = customIdElements[index];
+
+                                    <div class="card mb-3 shadow-sm draggable-item" draggable="true" @key="element">
+                                        <div class="card-body">
+                                            <div class="row align-items-center">
+                                                <div class="col-auto">
+                                                    <i class="bi bi-grip-vertical drag-handle fs-4" title="Drag to reorder"></i>
+                                                    <span class="badge bg-primary ms-1">@(index + 1)</span>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <select class="form-select" @bind="element.ElementType" @bind:after="UpdateCustomIdPreviewAsync">
+                                                        <option value="Fixed">Fixed</option>
+                                                        <option value="Random20">20-bit random</option>
+                                                        <option value="Random32">32-bit random</option>
+                                                        <option value="Random6">6-digit random</option>
+                                                        <option value="Random9">9-digit random</option>
+                                                        <option value="Guid">GUID</option>
+                                                        <option value="DateTime">Date/time</option>
+                                                        <option value="Sequence">Sequence</option>
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-5">
+                                                    @if (element.ElementType == "Fixed")
+                                                    {
+                                                        <input type="text" class="form-control" @bind="element.Value" @bind:event="oninput" @bind:after="UpdateCustomIdPreviewAsync" placeholder="Enter fixed text (e.g., emoji 🧑‍💻)" />
+                                                    }
+                                                    else if (element.ElementType == "Random20" || element.ElementType == "Random32")
+                                                    {
+                                                        <input type="text" class="form-control" @bind="element.Value" @bind:event="oninput" @bind:after="UpdateCustomIdPreviewAsync" placeholder="Format (X5 for hex, D6 for decimal)" />
+                                                    }
+                                                    else if (element.ElementType == "DateTime")
+                                                    {
+                                                        <input type="text" class="form-control" @bind="element.Value" @bind:event="oninput" @bind:after="UpdateCustomIdPreviewAsync" placeholder="Format (yyyy, MM, dd, etc.)" />
+                                                    }
+                                                    else if (element.ElementType == "Sequence")
+                                                    {
+                                                        <input type="text" class="form-control" @bind="element.Value" @bind:event="oninput" @bind:after="UpdateCustomIdPreviewAsync" placeholder="Format (D3 for 001, D for 1)" />
+                                                    }
+                                                    else
+                                                    {
+                                                        <input type="text" class="form-control" @bind="element.Value" @bind:event="oninput" @bind:after="UpdateCustomIdPreviewAsync" placeholder="Format options" />
+                                                    }
+                                                </div>
+                                                <div class="col-md-2 text-end">
+                                                    <button type="button" class="btn btn-sm btn-outline-info me-1" title="Help" @onclick="() => ShowHelp(element.ElementType)">
+                                                        <i class="bi bi-question-circle"></i>
+                                                    </button>
+                                                    <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => RemoveCustomIdElement(index)">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <!-- Description for each type -->
+                                            <div class="row mt-2">
+                                                <div class="col-md-11 offset-md-1">
+                                                    <small class="text-muted">
+                                                        @GetElementDescription(element.ElementType)
+                                                    </small>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+
+                            <button type="button" class="btn btn-primary" @onclick="AddCustomIdElement">
+                                <i class="bi bi-plus-circle"></i> Add element
+                            </button>
+
+                            @if (IsEditMode)
+                            {
+                                <button type="button" class="btn btn-success ms-2" @onclick="SaveCustomIdFormat" disabled="@isSaving">
                                     @if (isSaving)
                                     {
-                                        <span class="spinner-border spinner-border-sm me-2"></span>
+                                        <span class="spinner-border spinner-border-sm me-1"></span>
                                     }
-                                    @(IsEditMode ? "Update" : "Create") Item
+                                    Save Custom ID Format
                                 </button>
-                            </div>
-                        </EditForm>
+                            }
+                        </div>
                     </div>
-                </div>
-            }
+                }
+                else if (activeTab == "fields")
+                {
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Custom Fields</h5>
+                            <p class="text-muted">Define custom fields for items in this inventory (max 3 per type)</p>
+
+                            <button type="button" class="btn btn-outline-primary btn-sm mb-3" @onclick="AddCustomField">
+                                <i class="bi bi-plus"></i> Add Field
+                            </button>
+
+                            @if (model.CustomFields.Any())
+                            {
+                                <div class="alert alert-info">
+                                    <i class="bi bi-info-circle"></i> <strong>Tip:</strong> Drag and drop fields to reorder them
+                                </div>
+
+                                <div class="list-group" id="customFieldsContainer">
+                                    @for (int i = 0; i < model.CustomFields.Count; i++)
+                                    {
+                                        var index = i;
+                                        var field = model.CustomFields[index];
+
+                                        <div class="list-group-item draggable-item" draggable="true" @key="field">
+                                            <div class="row align-items-center mb-2">
+                                                <div class="col-auto">
+                                                    <i class="bi bi-grip-vertical drag-handle" title="Drag to reorder"></i>
+                                                    <span class="badge bg-primary">@(index + 1)</span>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <label class="form-label small mb-1">Field Type</label>
+                                                    <select class="form-select form-select-sm" @bind="field.FieldType">
+                                                        <option value="string">Short Text</option>
+                                                        <option value="text">Long Text</option>
+                                                        <option value="number">Number</option>
+                                                        <option value="link">Link/Document</option>
+                                                        <option value="bool">Checkbox</option>
+                                                    </select>
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <label class="form-label small mb-1">Field Name *</label>
+                                                    <input type="text" class="form-control form-control-sm" @bind="field.Name" placeholder="Field name" />
+                                                </div>
+                                                <div class="col-md-2">
+                                                    <label class="form-label small mb-1">&nbsp;</label>
+                                                    <div class="form-check">
+                                                        <input type="checkbox" class="form-check-input" @bind="field.ShowInTable" id="show-@index" />
+                                                        <label class="form-check-label small" for="show-@index">Show in table</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-2 text-end">
+                                                    <label class="form-label small mb-1">&nbsp;</label>
+                                                    <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => RemoveCustomField(index)">
+                                                        <i class="bi bi-trash"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div class="row">
+                                                <div class="col-12">
+                                                    <label class="form-label small mb-1">Description (optional)</label>
+                                                    <input type="text" class="form-control form-control-sm" @bind="field.Description" placeholder="Field description or hint" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+
+                                <div class="mt-3">
+                                    <button type="button" class="btn btn-success" @onclick="SaveFieldsConfiguration" disabled="@isSaving">
+                                        @if (isSaving)
+                                        {
+                                            <span class="spinner-border spinner-border-sm me-1"></span>
+                                        }
+                                        Save Fields Configuration
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+                else if (activeTab == "access" && IsEditMode)
+                {
+                    <div class="card">
+                        <div class="card-body">
+                            <h5>Access Management</h5>
+                            <p class="text-muted">Grant or revoke access to this inventory</p>
+                            <p>Access management features coming soon...</p>
+                        </div>
+                    </div>
+                }
+                else if (activeTab == "stats" && IsEditMode)
+                {
+                    <div class="card">
+                        <div class="card-body">
+                            <h5>Inventory Statistics</h5>
+                            <p class="text-muted">View aggregated data and statistics</p>
+                            <p>Statistics features coming soon...</p>
+                        </div>
+                    </div>
+                }
+                else if (activeTab == "export" && IsEditMode)
+                {
+                    <div class="card">
+                        <div class="card-body">
+                            <h5>Export Inventory</h5>
+                            <p class="text-muted">Export inventory data to various formats</p>
+                            <button class="btn btn-outline-success" disabled>
+                                <i class="bi bi-file-earmark-excel"></i> Export to CSV
+                            </button>
+                            <button class="btn btn-outline-success ms-2" disabled>
+                                <i class="bi bi-file-earmark-spreadsheet"></i> Export to Excel
+                            </button>
+                        </div>
+                    </div>
+                }
+            </div>
         </div>
     </div>
 </div>
 
 @code {
     [Parameter]
-    public int InventoryId { get; set; }
+    public int? Id { get; set; }
 
-    [Parameter]
-    public int? ItemId { get; set; }
-
-    private bool IsEditMode => ItemId.HasValue;
-    private bool isLoading = true;
+    private bool IsEditMode => Id.HasValue;
     private bool isSaving = false;
+    private bool isAutoSaving = false;
     private string errorMessage = "";
+    private string successMessage = "";
+    private string autoSaveMessage = "";
+    private string newTag = "";
+    private string activeTab = "settings";
+    private System.Threading.Timer? autoSaveTimer;
+    private bool hasChanges = false;
+    private int currentVersion = 1;
+    private List<string> tagSuggestions = new();
+    private List<string> filteredTagSuggestions = new();
+    private bool showTagSuggestions = false;
 
-    private InventoryDto? inventory;
-    private ItemDto model = new();
+    private CreateInventoryDto model = new();
+    private List<CustomIdElementDto> customIdElements = new();
+
+    // Drag-and-drop support
+    private DotNetObjectReference<CreateEdit>? dotNetHelper;
+    private bool firstRenderComplete = false;
+    private bool fieldsInitialized = false;
+    private bool customIdInitialized = false;
+    private string lastInitializedTab = "";
+
+    // Image upload
+    private bool isUploadingImage = false;
+    private string imageUploadError = "";
 
     protected override async Task OnInitializedAsync()
     {
-        var isAuth = await AuthState.IsAuthenticatedAsync();
-        if (!isAuth)
+        var isAuthenticated = await AuthState.IsAuthenticatedAsync();
+        if (!isAuthenticated)
         {
             Navigation.NavigateTo("/login");
             return;
         }
 
-        await LoadData();
+        if (!IsEditMode)
+        {
+            activeTab = "settings";
+        }
+
+        if (IsEditMode && Id.HasValue)
+        {
+            await LoadInventory(Id.Value);
+
+            // Start auto-save timer (every 8 seconds)
+            autoSaveTimer = new System.Threading.Timer(async _ =>
+            {
+                await InvokeAsync(async () =>
+                {
+                    await AutoSave();
+                });
+            }, null, TimeSpan.FromSeconds(8), TimeSpan.FromSeconds(8));
+        }
+
+        // Load all tags for autocomplete
+        await LoadTagSuggestions();
     }
 
-    private async Task LoadData()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            firstRenderComplete = true;
+            dotNetHelper = DotNetObjectReference.Create(this);
+        }
+
+        if (firstRenderComplete && dotNetHelper != null && activeTab != lastInitializedTab)
+        {
+            try
+            {
+                // Initialize drag-drop for custom fields only when on fields tab
+                if (activeTab == "fields" && model.CustomFields.Any() && !fieldsInitialized)
+                {
+                    await JSRuntime.InvokeVoidAsync("dragDropHelper.initializeDragDrop", "customFieldsContainer", dotNetHelper);
+                    fieldsInitialized = true;
+                }
+
+                // Initialize drag-drop for custom ID elements only when on customid tab
+                if (activeTab == "customid" && customIdElements.Any() && !customIdInitialized)
+                {
+                    await JSRuntime.InvokeVoidAsync("dragDropHelper.initializeDragDrop", "customIdElementsContainer", dotNetHelper);
+                    customIdInitialized = true;
+                }
+
+                lastInitializedTab = activeTab;
+            }
+            catch
+            {
+                // Silently ignore initialization errors
+            }
+        }
+    }
+
+    private async Task LoadInventory(int inventoryId)
     {
         try
         {
-            var token = await AuthState.GetTokenAsync();
-            Http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-
-            // Load inventory
-            inventory = await Http.GetFromJsonAsync<InventoryDto>($"/api/inventory/{InventoryId}");
-
-            // Load item if editing
-            if (IsEditMode && ItemId.HasValue)
+            var userId = await GetCurrentUserIdAsync();
+            var inventory = await InventoryService.GetInventoryByIdAsync(inventoryId, userId);
+            if (inventory != null)
             {
-                var item = await Http.GetFromJsonAsync<ItemDto>($"/api/item/{ItemId.Value}");
-                if (item != null)
+                model = new CreateInventoryDto
                 {
-                    model = item;
-                }
-            }
-            else
-            {
-                model.InventoryId = InventoryId;
+                    Title = inventory.Title,
+                    Description = inventory.Description,
+                    ImageUrl = inventory.ImageUrl,
+                    CategoryId = inventory.CategoryId,
+                    IsPublic = inventory.IsPublic,
+                    Tags = inventory.Tags,
+                    CustomFields = inventory.CustomFields
+                };
+
+                currentVersion = inventory.Version;
+                hasChanges = false;
+
+                // Load Custom ID configuration
+                customIdElements = await InventoryService.GetCustomIdConfigurationAsync(inventoryId);
+                await UpdateCustomIdPreviewAsync();
             }
         }
         catch (Exception ex)
         {
-            errorMessage = $"Error loading data: {ex.Message}";
-        }
-        finally
-        {
-            isLoading = false;
+            errorMessage = "Error loading inventory: " + ex.Message;
         }
     }
 
-    private async Task HandleSubmit()
+    private async Task<int> GetCurrentUserIdAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userIdClaim = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
+        return userIdClaim != null ? int.Parse(userIdClaim.Value) : 0;
+    }
+
+    private async Task HandleSaveSettings()
     {
         errorMessage = "";
+        successMessage = "";
         isSaving = true;
 
         try
         {
-            var token = await AuthState.GetTokenAsync();
-            Http.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            var userId = await GetCurrentUserIdAsync();
 
-            HttpResponseMessage response;
-            if (IsEditMode && ItemId.HasValue)
+            if (IsEditMode && Id.HasValue)
             {
-                response = await Http.PutAsJsonAsync($"/api/item/{ItemId.Value}", model);
+                var updateDto = new UpdateInventoryDto
+                {
+                    Title = model.Title,
+                    Description = model.Description,
+                    ImageUrl = model.ImageUrl,
+                    CategoryId = model.CategoryId,
+                    IsPublic = model.IsPublic,
+                    Tags = model.Tags,
+                    CustomFields = model.CustomFields,
+                    Version = currentVersion
+                };
+
+                var (success, message, data) = await InventoryService.UpdateInventoryAsync(Id.Value, updateDto, userId);
+
+                if (success && data != null)
+                {
+                    currentVersion = data.Version;
+                    hasChanges = false;
+                    successMessage = "Inventory updated successfully!";
+                }
+                else
+                {
+                    errorMessage = message;
+                }
             }
             else
             {
-                response = await Http.PostAsJsonAsync("/api/item", model);
-            }
+                var (success, message, data) = await InventoryService.CreateInventoryAsync(model, userId);
 
-            if (response.IsSuccessStatusCode)
-            {
-                Navigation.NavigateTo($"/inventories/{InventoryId}");
-            }
-            else
-            {
-                var error = await response.Content.ReadAsStringAsync();
-                errorMessage = $"Error: {error}";
+                if (success)
+                {
+                    successMessage = "Inventory created successfully!";
+                    await Task.Delay(1000);
+                    Navigation.NavigateTo("/dashboard");
+                }
+                else
+                {
+                    errorMessage = message;
+                }
             }
         }
         catch (Exception ex)
@@ -288,46 +679,364 @@
         }
     }
 
+    private async Task SaveFieldsConfiguration()
+    {
+        // Same as HandleSaveSettings but focuses on fields
+        await HandleSaveSettings();
+    }
+
+    private async Task SaveCustomIdFormat()
+    {
+        if (!IsEditMode || !Id.HasValue)
+        {
+            errorMessage = "Please save the inventory first before configuring Custom ID";
+            return;
+        }
+
+        errorMessage = "";
+        successMessage = "";
+        isSaving = true;
+
+        try
+        {
+            var userId = await GetCurrentUserIdAsync();
+            var (success, message) = await InventoryService.SaveCustomIdConfigurationAsync(Id.Value, customIdElements, userId);
+
+            if (success)
+            {
+                successMessage = message;
+                await Task.Delay(2000);
+                successMessage = "";
+            }
+            else
+            {
+                errorMessage = message;
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private void AddTag()
+    {
+        if (!string.IsNullOrWhiteSpace(newTag) && !model.Tags.Contains(newTag))
+        {
+            model.Tags.Add(newTag.Trim());
+            newTag = "";
+            showTagSuggestions = false;
+            MarkAsChanged();
+        }
+    }
+
+    private void HandleTagKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            AddTag();
+        }
+    }
+
+    private void RemoveTag(string tag)
+    {
+        model.Tags.Remove(tag);
+        MarkAsChanged();
+    }
+
+    private async Task LoadTagSuggestions()
+    {
+        try
+        {
+            var tags = await InventoryService.GetAllTagsAsync();
+            tagSuggestions = tags.Select(t => t.Name).ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading tag suggestions: {ex.Message}");
+        }
+    }
+
+    private void OnTagInput(ChangeEventArgs e)
+    {
+        newTag = e.Value?.ToString() ?? "";
+
+        if (string.IsNullOrWhiteSpace(newTag))
+        {
+            showTagSuggestions = false;
+            filteredTagSuggestions.Clear();
+            return;
+        }
+
+        // Filter suggestions based on input
+        filteredTagSuggestions = tagSuggestions
+            .Where(t => t.Contains(newTag, StringComparison.OrdinalIgnoreCase) && !model.Tags.Contains(t))
+            .Take(5)
+            .ToList();
+
+        showTagSuggestions = filteredTagSuggestions.Any();
+    }
+
+    private void SelectTagSuggestion(string tag)
+    {
+        newTag = tag;
+        AddTag();
+    }
+
+    private void AddCustomField()
+    {
+        var typeCounts = model.CustomFields.GroupBy(f => f.FieldType).ToDictionary(g => g.Key, g => g.Count());
+        model.CustomFields.Add(new CustomFieldDto
+        {
+            FieldType = "string",
+            Name = "",
+            Description = "",
+            ShowInTable = false
+        });
+    }
+
+    private void RemoveCustomField(int index)
+    {
+        model.CustomFields.RemoveAt(index);
+    }
+
+    private async Task AddCustomIdElement()
+    {
+        customIdElements.Add(new CustomIdElementDto
+        {
+            ElementType = "Fixed",
+            Value = "",
+            Order = customIdElements.Count
+        });
+        await UpdateCustomIdPreviewAsync();
+    }
+
+    private async Task RemoveCustomIdElement(int index)
+    {
+        customIdElements.RemoveAt(index);
+        // Reorder remaining elements
+        for (int i = 0; i < customIdElements.Count; i++)
+        {
+            customIdElements[i].Order = i;
+        }
+        await UpdateCustomIdPreviewAsync();
+    }
+
+    private string customIdPreview = "No elements added";
+
+    private async Task UpdateCustomIdPreviewAsync()
+    {
+        if (!customIdElements.Any())
+        {
+            customIdPreview = "No elements added";
+            return;
+        }
+
+        try
+        {
+            customIdPreview = await CustomIdService.PreviewCustomIdAsync(customIdElements);
+        }
+        catch (Exception ex)
+        {
+            customIdPreview = $"Error: {ex.Message}";
+        }
+    }
+
+    private string GetElementDescription(string elementType)
+    {
+        return elementType switch
+        {
+            "Fixed" => "A piece of unchanging text. E.g., you can use Unicode emoji.",
+            "Random20" => "A random value. E.g., you can format it as a six-digit decimal (D6) or 5-digit hex (X5).",
+            "Random32" => "A random value. E.g., you can format it as a ten-digit decimal (D10) or 8-digit hex (X8).",
+            "Random6" => "A 6-digit random number (000000-999999).",
+            "Random9" => "A 9-digit random number (000000000-999999999).",
+            "Guid" => "A globally unique identifier.",
+            "DateTime" => "An item creation date and time. E.g., you can use an abbreviated day of the week (ddd).",
+            "Sequence" => "A sequential index. E.g., you can format it with leading zeros (D4) or without them (D).",
+            _ => ""
+        };
+    }
+
+    private void ShowHelp(string elementType)
+    {
+        // TODO: Show popover with detailed help
+        successMessage = $"Help for {elementType}: " + GetElementDescription(elementType);
+    }
+
     private void GoBack()
     {
-        Navigation.NavigateTo($"/inventories/{InventoryId}");
+        Navigation.NavigateTo(IsEditMode ? $"/inventories/{Id}" : "/dashboard");
     }
 
-    // DTOs
-    public class InventoryDto
+    private void MarkAsChanged()
     {
-        public int Id { get; set; }
-        public string Title { get; set; } = "";
-        public List<CustomFieldDto> CustomFields { get; set; } = new();
+        hasChanges = true;
     }
 
-    public class CustomFieldDto
+    private async Task AutoSave()
     {
-        public string FieldType { get; set; } = "";
-        public string Name { get; set; } = "";
-        public string? Description { get; set; }
+        if (!IsEditMode || !Id.HasValue || !hasChanges || isSaving || isAutoSaving)
+            return;
+
+        isAutoSaving = true;
+
+        try
+        {
+            var userId = await GetCurrentUserIdAsync();
+            var updateDto = new UpdateInventoryDto
+            {
+                Title = model.Title,
+                Description = model.Description,
+                ImageUrl = model.ImageUrl,
+                CategoryId = model.CategoryId,
+                IsPublic = model.IsPublic,
+                Tags = model.Tags,
+                CustomFields = model.CustomFields,
+                Version = currentVersion
+            };
+
+            var (success, message, data) = await InventoryService.UpdateInventoryAsync(Id.Value, updateDto, userId);
+
+            if (success && data != null)
+            {
+                currentVersion = data.Version;
+                hasChanges = false;
+                autoSaveMessage = $"Auto-saved at {DateTime.Now:HH:mm:ss}";
+                StateHasChanged();
+
+                // Clear message after 3 seconds
+                await Task.Delay(3000);
+                autoSaveMessage = "";
+                StateHasChanged();
+            }
+            else if (message.Contains("modified by someone else"))
+            {
+                autoSaveMessage = "⚠️ Conflict detected - reload page";
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            // Silently fail for auto-save, don't disrupt user
+            Console.WriteLine($"Auto-save failed: {ex.Message}");
+        }
+        finally
+        {
+            isAutoSaving = false;
+        }
     }
 
-    public class ItemDto
+    private async Task HandleImageUpload(InputFileChangeEventArgs e)
     {
-        public int Id { get; set; }
-        public int InventoryId { get; set; }
-        public string? CustomId { get; set; }
-        public string? CustomString1Value { get; set; }
-        public string? CustomString2Value { get; set; }
-        public string? CustomString3Value { get; set; }
-        public string? CustomText1Value { get; set; }
-        public string? CustomText2Value { get; set; }
-        public string? CustomText3Value { get; set; }
-        public decimal? CustomNumber1Value { get; set; }
-        public decimal? CustomNumber2Value { get; set; }
-        public decimal? CustomNumber3Value { get; set; }
-        public string? CustomLink1Value { get; set; }
-        public string? CustomLink2Value { get; set; }
-        public string? CustomLink3Value { get; set; }
-        public bool CustomBool1Value { get; set; }
-        public bool CustomBool2Value { get; set; }
-        public bool CustomBool3Value { get; set; }
-        public int Version { get; set; }
+        imageUploadError = "";
+        isUploadingImage = true;
+
+        try
+        {
+            var file = e.File;
+
+            if (file == null)
+            {
+                return;
+            }
+
+            // Upload to Cloudinary
+            var imageUrl = await CloudinaryService.UploadImageAsync(file, "inventories");
+
+            // Update model
+            model.ImageUrl = imageUrl;
+            MarkAsChanged();
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            imageUploadError = $"Upload failed: {ex.Message}";
+        }
+        finally
+        {
+            isUploadingImage = false;
+            StateHasChanged();
+        }
+    }
+
+    private void RemoveImage()
+    {
+        model.ImageUrl = "";
+        MarkAsChanged();
+    }
+
+    [Microsoft.JSInterop.JSInvokable]
+    public void OnItemReordered(int oldIndex, int newIndex)
+    {
+        // Determine which list to reorder based on active tab
+        if (activeTab == "fields")
+        {
+            ReorderCustomFields(oldIndex, newIndex);
+        }
+        else if (activeTab == "customid")
+        {
+            ReorderCustomIdElements(oldIndex, newIndex);
+        }
+    }
+
+    private void ReorderCustomFields(int oldIndex, int newIndex)
+    {
+        if (oldIndex < 0 || oldIndex >= model.CustomFields.Count ||
+            newIndex < 0 || newIndex >= model.CustomFields.Count)
+            return;
+
+        var item = model.CustomFields[oldIndex];
+        model.CustomFields.RemoveAt(oldIndex);
+        model.CustomFields.Insert(newIndex, item);
+
+        MarkAsChanged();
+        StateHasChanged();
+    }
+
+    private void ReorderCustomIdElements(int oldIndex, int newIndex)
+    {
+        if (oldIndex < 0 || oldIndex >= customIdElements.Count ||
+            newIndex < 0 || newIndex >= customIdElements.Count)
+            return;
+
+        var item = customIdElements[oldIndex];
+        customIdElements.RemoveAt(oldIndex);
+        customIdElements.Insert(newIndex, item);
+
+        // Update Order property for all elements
+        for (int i = 0; i < customIdElements.Count; i++)
+        {
+            customIdElements[i].Order = i;
+        }
+
+        _ = UpdateCustomIdPreviewAsync();
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        autoSaveTimer?.Dispose();
+
+        // Cleanup JavaScript event handlers
+        if (dotNetHelper != null)
+        {
+            try
+            {
+                JSRuntime.InvokeVoidAsync("dragDropHelper.cleanup", "customFieldsContainer");
+                JSRuntime.InvokeVoidAsync("dragDropHelper.cleanup", "customIdElementsContainer");
+            }
+            catch
+            {
+                // Ignore cleanup errors
+            }
+
+            dotNetHelper.Dispose();
+        }
     }
 }

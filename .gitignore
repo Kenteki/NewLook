@@ -20,6 +20,9 @@ out/
 .env.test.local
 .env.production.local
 
+# Claude Code
+.claude/
+
 # IDE
 .vscode/
 .idea/
