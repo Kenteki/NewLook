@@ -74,7 +74,7 @@ namespace NewLook.Services
             await _context.SaveChangesAsync();
 
             // Send verification email
-            var baseUrl = _configuration["AppBaseUrl"] ?? "http://localhost:5070";
+            var baseUrl = _configuration["APP_BASE_URL"] ?? "http://localhost:5070";
             var verificationLink = $"{baseUrl}/verify-email?token={verificationToken}";
             await _emailService.SendVerificationEmailAsync(user.Email, user.Username, verificationLink);
 
