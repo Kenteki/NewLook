@@ -24,7 +24,9 @@ namespace NewLook.Services
             _authStateProvider = authStateProvider;
             _configuration = configuration;
             _logger = logger;
-            _baseUrl = _configuration["ApiBaseUrl"] ?? "http://localhost:5070";
+            _baseUrl = Environment.GetEnvironmentVariable("APP_BASE_URL")
+                ?? _configuration["BaseUrl"]
+                ?? "http://localhost:5070";
         }
 
         private async Task<HttpClient> CreateHttpClientAsync(bool authenticated = false)
@@ -94,7 +96,9 @@ namespace NewLook.Services
             {
                 var clientId = _configuration["Authentication:Google:ClientID"];
                 var clientSecret = _configuration["Authentication:Google:ClientSecret"];
-                var baseUrl = _configuration["App:BaseUrl"] ?? "http://localhost:5070";
+                var baseUrl = Environment.GetEnvironmentVariable("APP_BASE_URL")
+                    ?? _configuration["BaseUrl"]
+                    ?? "http://localhost:5070";
                 var redirectUri = $"{baseUrl}/oauth-callback";
 
                 if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(clientSecret))

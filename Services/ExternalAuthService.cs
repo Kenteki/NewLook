@@ -129,7 +129,9 @@ namespace NewLook.Services
             {
                 var clientId = _configuration["Authentication:Github:ClientID"]!;
                 var clientSecret = _configuration["Authentication:Github:ClientSecret"]!;
-                var baseUrl = _configuration["App:BaseUrl"] ?? "http://localhost:5070";
+                var baseUrl = Environment.GetEnvironmentVariable("APP_BASE_URL")
+                    ?? _configuration["BaseUrl"]
+                    ?? "http://localhost:5070";
                 var redirectUri = $"{baseUrl}/oauth-callback";
 
                 var requestBody = new Dictionary<string, string>

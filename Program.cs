@@ -114,4 +114,23 @@ app.MapBlazorHub();
 app.MapFallbackToPage("/_Host");
 app.MapControllers();
 
+// Auto-migrate database in production
+if (app.Environment.IsProduction())
+{
+    using (var scope = app.Services.CreateScope())
+    {
+        try
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            db.Database.Migrate();
+            Console.WriteLine("Database migration completed successfully.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Database migration failed: {ex.Message}");
+            // Don't crash the app if migration fails
+        }
+    }
+}
+
 app.Run();

@@ -265,7 +265,9 @@
         try
         {
             var clientId = Configuration["Authentication:Google:ClientID"];
-            var baseUrl = Configuration["App:BaseUrl"] ?? "http://localhost:5070";
+            var baseUrl = Environment.GetEnvironmentVariable("APP_BASE_URL")
+                ?? Configuration["BaseUrl"]
+                ?? "http://localhost:5070";
             var redirectUri = baseUrl + "/oauth-callback";
             var encodedRedirect = redirectUri.Replace(":", "%3A").Replace("/", "%2F");
 
@@ -294,7 +296,9 @@
         try
         {
             var clientId = Configuration["Authentication:Github:ClientID"];
-            var baseUrl = Configuration["App:BaseUrl"] ?? "http://localhost:5070";
+            var baseUrl = Environment.GetEnvironmentVariable("APP_BASE_URL")
+                ?? Configuration["BaseUrl"]
+                ?? "http://localhost:5070";
             var redirectUri = baseUrl + "/oauth-callback";
             var encodedRedirect = redirectUri.Replace(":", "%3A").Replace("/", "%2F");
 

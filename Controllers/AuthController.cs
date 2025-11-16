@@ -110,9 +110,9 @@ namespace NewLook.Controllers
                 var clientId = _configuration["Authentication:Google:ClientID"];
                 var clientSecret = _configuration["Authentication:Google:ClientSecret"];
 
-                // Get base URL - try multiple configurations
-                var baseUrl = _configuration["App:BaseUrl"]
-                    ?? _configuration["ApiBaseUrl"]
+                // Get base URL from environment variable or configuration
+                var baseUrl = Environment.GetEnvironmentVariable("APP_BASE_URL")
+                    ?? _configuration["BaseUrl"]
                     ?? "http://localhost:5070";
 
                 var redirectUri = $"{baseUrl.TrimEnd('/')}/oauth-callback";
