@@ -622,7 +622,8 @@ namespace NewLook.Services
                         FieldType = "string",
                         Name = typeof(Inventory).GetProperty($"CustomString{i}Name")?.GetValue(inventory) as string ?? "",
                         Description = typeof(Inventory).GetProperty($"CustomString{i}Description")?.GetValue(inventory) as string,
-                        ShowInTable = (bool)(typeof(Inventory).GetProperty($"CustomString{i}ShowInTable")?.GetValue(inventory) ?? false)
+                        ShowInTable = (bool)(typeof(Inventory).GetProperty($"CustomString{i}ShowInTable")?.GetValue(inventory) ?? false),
+                        SlotNumber = i
                     });
                 }
 
@@ -634,7 +635,8 @@ namespace NewLook.Services
                         FieldType = "text",
                         Name = typeof(Inventory).GetProperty($"CustomText{i}Name")?.GetValue(inventory) as string ?? "",
                         Description = typeof(Inventory).GetProperty($"CustomText{i}Description")?.GetValue(inventory) as string,
-                        ShowInTable = (bool)(typeof(Inventory).GetProperty($"CustomText{i}ShowInTable")?.GetValue(inventory) ?? false)
+                        ShowInTable = (bool)(typeof(Inventory).GetProperty($"CustomText{i}ShowInTable")?.GetValue(inventory) ?? false),
+                        SlotNumber = i
                     });
                 }
 
@@ -646,7 +648,8 @@ namespace NewLook.Services
                         FieldType = "number",
                         Name = typeof(Inventory).GetProperty($"CustomNumber{i}Name")?.GetValue(inventory) as string ?? "",
                         Description = typeof(Inventory).GetProperty($"CustomNumber{i}Description")?.GetValue(inventory) as string,
-                        ShowInTable = (bool)(typeof(Inventory).GetProperty($"CustomNumber{i}ShowInTable")?.GetValue(inventory) ?? false)
+                        ShowInTable = (bool)(typeof(Inventory).GetProperty($"CustomNumber{i}ShowInTable")?.GetValue(inventory) ?? false),
+                        SlotNumber = i
                     });
                 }
 
@@ -658,7 +661,8 @@ namespace NewLook.Services
                         FieldType = "link",
                         Name = typeof(Inventory).GetProperty($"CustomLink{i}Name")?.GetValue(inventory) as string ?? "",
                         Description = typeof(Inventory).GetProperty($"CustomLink{i}Description")?.GetValue(inventory) as string,
-                        ShowInTable = (bool)(typeof(Inventory).GetProperty($"CustomLink{i}ShowInTable")?.GetValue(inventory) ?? false)
+                        ShowInTable = (bool)(typeof(Inventory).GetProperty($"CustomLink{i}ShowInTable")?.GetValue(inventory) ?? false),
+                        SlotNumber = i
                     });
                 }
 
@@ -670,7 +674,8 @@ namespace NewLook.Services
                         FieldType = "bool",
                         Name = typeof(Inventory).GetProperty($"CustomBool{i}Name")?.GetValue(inventory) as string ?? "",
                         Description = typeof(Inventory).GetProperty($"CustomBool{i}Description")?.GetValue(inventory) as string,
-                        ShowInTable = (bool)(typeof(Inventory).GetProperty($"CustomBool{i}ShowInTable")?.GetValue(inventory) ?? false)
+                        ShowInTable = (bool)(typeof(Inventory).GetProperty($"CustomBool{i}ShowInTable")?.GetValue(inventory) ?? false),
+                        SlotNumber = i
                     });
                 }
             }

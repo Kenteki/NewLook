@@ -1,33 +1,17 @@
-# Build stage
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
-
-# Copy project file and restore dependencies
 COPY ["NewLook.csproj", "./"]
 RUN dotnet restore
-
-# Copy everything else and build
 COPY . .
 RUN dotnet publish -c Release -o /app/publish
 
-# Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app
-
-# Copy published app
 COPY --from=build /app/publish .
-
-# Render.com uses PORT environment variable
-# ASPNETCORE_URLS will be set dynamically from PORT
 ENV ASPNETCORE_URLS=http://+:${PORT:-8080}
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
 ENV ASPNETCORE_ENVIRONMENT=Production
-
-# Create a startup script to handle dynamic PORT
 RUN echo '#!/bin/bash\nexport ASPNETCORE_URLS="http://+:${PORT:-8080}"\ndotnet NewLook.dll' > /app/start.sh && \
     chmod +x /app/start.sh
-
-# Expose the port (Render will override this)
 EXPOSE ${PORT:-8080}
-
 ENTRYPOINT ["/bin/bash", "/app/start.sh"]

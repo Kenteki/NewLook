@@ -802,16 +802,15 @@
 
     private string GetItemFieldValue(ItemResponseDto item, CustomFieldDto field)
     {
-        var fieldIndex = inventory!.CustomFields.IndexOf(field) + 1;
         var fieldType = field.FieldType.ToLower();
 
         return fieldType switch
         {
-            "string" => GetPropertyValue(item, $"CustomString{fieldIndex}Value"),
-            "text" => GetPropertyValue(item, $"CustomText{fieldIndex}Value"),
-            "number" => GetPropertyValue(item, $"CustomNumber{fieldIndex}Value"),
-            "link" => GetPropertyValue(item, $"CustomLink{fieldIndex}Value"),
-            "bool" => GetPropertyValue(item, $"CustomBool{fieldIndex}Value"),
+            "string" => GetPropertyValue(item, $"CustomString{field.SlotNumber}Value"),
+            "text" => GetPropertyValue(item, $"CustomText{field.SlotNumber}Value"),
+            "number" => GetPropertyValue(item, $"CustomNumber{field.SlotNumber}Value"),
+            "link" => GetPropertyValue(item, $"CustomLink{field.SlotNumber}Value"),
+            "bool" => GetPropertyValue(item, $"CustomBool{field.SlotNumber}Value"),
             _ => ""
         };
     }

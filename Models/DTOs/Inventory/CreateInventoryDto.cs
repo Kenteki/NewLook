@@ -29,5 +29,6 @@ namespace NewLook.Models.DTOs.Inventory
         public string Name { get; set; } = string.Empty;
         public string? Description { get; set; }
         public bool ShowInTable { get; set; } = false;
+        public int SlotNumber { get; set; } // 1, 2, or 3 - which slot this field uses
     }
 }
