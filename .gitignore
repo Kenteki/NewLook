@@ -31,7 +31,7 @@ out/
 *~
 .DS_Store
 
-# .NET
+# .NET Core / ASP.NET Core
 bin/
 obj/
 *.user
@@ -48,6 +48,7 @@ TestResults/
 project.lock.json
 project.fragment.lock.json
 artifacts/
+*.csproj.user
 
 # Build results
 [Dd]ebug/
@@ -65,7 +66,7 @@ bld/
 [Ll]og/
 [Ll]ogs/
 
-# NuGet
+# NuGet Packages
 *.nupkg
 *.snupkg
 **/packages/*
@@ -73,9 +74,25 @@ bld/
 *.nuget.props
 *.nuget.targets
 
-# Visual Studio cache/options
+# Visual Studio
 .vs/
 .vscode/
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Visual Studio Code
+.vscode/
+.history/
+
+# JetBrains Rider
+.idea/
+*.sln.iml
+
+# SQL Scripts (optional - keep admin script)
+# MakeAdminScript.sql
 
 # React/Vite specific
 .vite/
