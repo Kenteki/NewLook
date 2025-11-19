@@ -80,6 +80,11 @@ builder.Services.AddScoped<MarkdownService>();
 builder.Services.Configure<CloudinarySettings>(builder.Configuration.GetSection("Cloudinary"));
 builder.Services.AddScoped<ICloudinaryService, CloudinaryService>();
 
+// ===== Salesforce =====
+builder.Services.Configure<SalesforceSettings>(builder.Configuration.GetSection("Salesforce"));
+builder.Services.AddScoped<ISalesforceAuthService, SalesforceAuthService>();
+builder.Services.AddScoped<ISalesforceService, SalesforceService>();
+
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<AuthenticationStateProvider, CustomAuthenticationStateProvider>();
 builder.Services.AddScoped(sp =>

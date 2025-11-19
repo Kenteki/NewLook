@@ -21,6 +21,11 @@
         public string UI_Language { get; set; } = "en";
         public string UI_Theme { get; set; } = "light";
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+        // Salesforce Integration
+        public string? SalesforceAccountId { get; set; }
+        public string? SalesforceContactId { get; set; }
+
         public ICollection<UserRole> UserRoles { get; set; } = new List<UserRole>();
         public ICollection<Inventory> OwnedInventories { get; set; } = new List<Inventory>();
         public ICollection<InventoryAccess> InventoryAccesses { get; set; } = new List<InventoryAccess>();

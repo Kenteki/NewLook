@@ -1,0 +1,339 @@
+@page "/admin/sync-salesforce/{userId:int}"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using NewLook.Services.Interfaces
+@using NewLook.Services
+@using NewLook.Models.DTOs.Salesforce
+@using System.Net.Http.Json
+@attribute [Authorize]
+@inject IUserService UserService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject IHttpClientFactory HttpClientFactory
+@inject IConfiguration Configuration
+@inject IJSRuntime JS
+
+<PageTitle>Sync User to Salesforce - NewLook</PageTitle>
+
+<div class="container mt-4">
+    @if (!isLoading && !isAdmin)
+    {
+        <div class="alert alert-danger">
+            <h4>Access Denied</h4>
+            <p>Only administrators can access this page.</p>
+            <a href="/admin" class="btn btn-primary">Back to Admin Panel</a>
+        </div>
+    }
+    else if (isLoading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+        </div>
+    }
+    else if (userNotFound)
+    {
+        <div class="alert alert-warning">
+            <h4>User Not Found</h4>
+            <p>The requested user does not exist.</p>
+            <a href="/admin" class="btn btn-primary">Back to Admin Panel</a>
+        </div>
+    }
+    else
+    {
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="card shadow-sm">
+                    <div class="card-header">
+                        <h4 class="mb-0">
+                            <i class="bi bi-cloud-upload me-2"></i>Sync User to Salesforce
+                        </h4>
+                        <p class="text-muted mb-0 mt-2">User: <strong>@targetUsername</strong> (@targetEmail)</p>
+                    </div>
+                    <div class="card-body">
+                        @if (alreadySynced)
+                        {
+                            <div class="alert alert-info">
+                                <i class="bi bi-info-circle me-2"></i>
+                                This user is already synced to Salesforce.
+                                <div class="mt-2">
+                                    <strong>Account ID:</strong> @accountId<br />
+                                    <strong>Contact ID:</strong> @contactId
+                                </div>
+                            </div>
+                            <a href="/admin" class="btn btn-primary">Back to Admin Panel</a>
+                        }
+                        else if (isSubmitting)
+                        {
+                            <div class="text-center py-5">
+                                <div class="spinner-border text-primary mb-3" role="status"></div>
+                                <p>Syncing to Salesforce...</p>
+                            </div>
+                        }
+                        else if (syncSuccess)
+                        {
+                            <div class="alert alert-success">
+                                <i class="bi bi-check-circle me-2"></i>
+                                Successfully synced to Salesforce!
+                                <div class="mt-2">
+                                    <strong>Account ID:</strong> @accountId<br />
+                                    <strong>Contact ID:</strong> @contactId
+                                </div>
+                            </div>
+                            <a href="/admin" class="btn btn-primary">Back to Admin Panel</a>
+                        }
+                        else if (!string.IsNullOrEmpty(errorMessage))
+                        {
+                            <div class="alert alert-danger">
+                                <i class="bi bi-exclamation-triangle me-2"></i>
+                                @errorMessage
+                            </div>
+                        }
+
+                        @if (!alreadySynced && !syncSuccess)
+                        {
+                            <EditForm Model="@formData" OnValidSubmit="@HandleSubmit">
+                                <DataAnnotationsValidator />
+
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">First Name *</label>
+                                        <InputText @bind-Value="formData.FirstName" class="form-control" />
+                                        <ValidationMessage For="@(() => formData.FirstName)" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Last Name *</label>
+                                        <InputText @bind-Value="formData.LastName" class="form-control" />
+                                        <ValidationMessage For="@(() => formData.LastName)" />
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Email *</label>
+                                    <InputText @bind-Value="formData.Email" class="form-control" type="email" />
+                                    <ValidationMessage For="@(() => formData.Email)" />
+                                </div>
+
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">Phone</label>
+                                        <InputText @bind-Value="formData.Phone" class="form-control" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Job Title</label>
+                                        <InputText @bind-Value="formData.JobTitle" class="form-control" />
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Company</label>
+                                    <InputText @bind-Value="formData.Company" class="form-control" />
+                                    <small class="text-muted">If left empty, will use "FirstName LastName" as Account name</small>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Street Address</label>
+                                    <InputText @bind-Value="formData.Street" class="form-control" />
+                                </div>
+
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">City</label>
+                                        <InputText @bind-Value="formData.City" class="form-control" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">State/Province</label>
+                                        <InputText @bind-Value="formData.State" class="form-control" />
+                                    </div>
+                                </div>
+
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">Postal Code</label>
+                                        <InputText @bind-Value="formData.PostalCode" class="form-control" />
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">Country</label>
+                                        <InputText @bind-Value="formData.Country" class="form-control" />
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label">Description</label>
+                                    <InputTextArea @bind-Value="formData.Description" class="form-control" rows="3" />
+                                </div>
+
+                                <div class="d-flex justify-content-between">
+                                    <a href="/admin" class="btn btn-secondary">Cancel</a>
+                                    <button type="submit" class="btn btn-success" disabled="@isSubmitting">
+                                        <i class="bi bi-cloud-upload me-2"></i>Sync to Salesforce
+                                    </button>
+                                </div>
+                            </EditForm>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public int UserId { get; set; }
+
+    private bool isLoading = true;
+    private bool isAdmin = false;
+    private bool userNotFound = false;
+    private bool alreadySynced = false;
+    private bool isSubmitting = false;
+    private bool syncSuccess = false;
+    private string errorMessage = string.Empty;
+    private string targetUsername = string.Empty;
+    private string targetEmail = string.Empty;
+    private string? accountId;
+    private string? contactId;
+
+    private CreateSalesforceAccountDto formData = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CheckAdminAccess();
+        if (isAdmin)
+        {
+            await LoadUserData();
+        }
+    }
+
+    private async Task CheckAdminAccess()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userIdClaim = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier);
+
+            if (userIdClaim != null)
+            {
+                var currentUserId = int.Parse(userIdClaim.Value);
+                isAdmin = await UserService.IsUserAdminAsync(currentUserId);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error checking admin access: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadUserData()
+    {
+        isLoading = true;
+        try
+        {
+            var httpClient = await CreateAuthenticatedHttpClientAsync();
+            var response = await httpClient.GetAsync($"/api/salesforce/admin/check-status/{UserId}");
+
+            if (!response.IsSuccessStatusCode)
+            {
+                userNotFound = true;
+                return;
+            }
+
+            var statusDto = await response.Content.ReadFromJsonAsync<SalesforceStatusDto>();
+
+            if (statusDto == null)
+            {
+                userNotFound = true;
+                return;
+            }
+
+            targetUsername = statusDto.Username;
+            targetEmail = statusDto.Email;
+            alreadySynced = statusDto.IsSynced;
+            accountId = statusDto.AccountId;
+            contactId = statusDto.ContactId;
+
+            formData.Email = targetEmail;
+
+            var names = targetUsername.Split(' ', 2);
+            if (names.Length > 0)
+                formData.FirstName = names[0];
+            if (names.Length > 1)
+                formData.LastName = names[1];
+            else
+                formData.LastName = targetUsername;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading user data: {ex.Message}");
+            errorMessage = "Failed to load user data";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task HandleSubmit()
+    {
+        isSubmitting = true;
+        errorMessage = string.Empty;
+
+        try
+        {
+            var httpClient = await CreateAuthenticatedHttpClientAsync();
+            var response = await httpClient.PostAsJsonAsync($"/api/salesforce/admin/create-account/{UserId}", formData);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<SalesforceAccountResultDto>();
+                if (result?.Success == true)
+                {
+                    syncSuccess = true;
+                    accountId = result.AccountId;
+                    contactId = result.ContactId;
+                }
+                else
+                {
+                    errorMessage = result?.Message ?? "Failed to sync to Salesforce";
+                }
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                errorMessage = $"Failed to sync: {errorContent}";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private async Task<HttpClient> CreateAuthenticatedHttpClientAsync()
+    {
+        var httpClient = HttpClientFactory.CreateClient();
+        var baseUrl = Environment.GetEnvironmentVariable("APP_BASE_URL")
+            ?? Configuration["BaseUrl"]
+            ?? "http://localhost:5070";
+        httpClient.BaseAddress = new Uri(baseUrl);
+
+        if (AuthStateProvider is CustomAuthenticationStateProvider customProvider)
+        {
+            var token = await customProvider.GetTokenAsync();
+            if (!string.IsNullOrEmpty(token))
+            {
+                httpClient.DefaultRequestHeaders.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            }
+        }
+
+        return httpClient;
+    }
+}

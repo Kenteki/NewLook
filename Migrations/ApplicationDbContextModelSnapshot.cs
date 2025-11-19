@@ -658,6 +658,12 @@ namespace NewLook.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
 
+                    b.Property<string>("SalesforceAccountId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("SalesforceContactId")
+                        .HasColumnType("text");
+
                     b.Property<string>("UI_Language")
                         .IsRequired()
                         .ValueGeneratedOnAdd()

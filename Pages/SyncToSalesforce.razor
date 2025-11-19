@@ -1,0 +1,261 @@
+@page "/sync-salesforce"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using NewLook.Models.DTOs.Salesforce
+@using System.Net.Http.Json
+@attribute [Authorize]
+@inject IHttpClientFactory HttpClientFactory
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<PageTitle>Sync to Salesforce - NewLook</PageTitle>
+
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow">
+                <div class="card-header bg-success text-white">
+                    <h4 class="mb-0">
+                        <i class="bi bi-cloud-upload me-2"></i>Sync to Salesforce CRM
+                    </h4>
+                </div>
+                <div class="card-body">
+                    @if (isLoading)
+                    {
+                        <div class="text-center py-5">
+                            <div class="spinner-border text-success" role="status"></div>
+                            <p class="mt-3">Checking Salesforce status...</p>
+                        </div>
+                    }
+                    else if (existsInSalesforce)
+                    {
+                        <div class="alert alert-info">
+                            <i class="bi bi-check-circle-fill me-2"></i>
+                            Your account is already synced with Salesforce CRM.
+                        </div>
+                        <button class="btn btn-secondary" @onclick="GoBack">Go Back</button>
+                    }
+                    else if (!string.IsNullOrEmpty(errorMessage))
+                    {
+                        <div class="alert alert-danger">
+                            <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                            @errorMessage
+                        </div>
+                        <button class="btn btn-secondary" @onclick="GoBack">Go Back</button>
+                    }
+                    else
+                    {
+                        <EditForm Model="@formData" OnValidSubmit="@HandleSubmit">
+                            <DataAnnotationsValidator />
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">First Name *</label>
+                                    <InputText @bind-Value="formData.FirstName" class="form-control" />
+                                    <ValidationMessage For="@(() => formData.FirstName)" />
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Last Name *</label>
+                                    <InputText @bind-Value="formData.LastName" class="form-control" />
+                                    <ValidationMessage For="@(() => formData.LastName)" />
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Email *</label>
+                                <InputText @bind-Value="formData.Email" class="form-control" />
+                                <ValidationMessage For="@(() => formData.Email)" />
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Phone</label>
+                                    <InputText @bind-Value="formData.Phone" class="form-control" />
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Job Title</label>
+                                    <InputText @bind-Value="formData.JobTitle" class="form-control" />
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Company</label>
+                                <InputText @bind-Value="formData.Company" class="form-control" />
+                                <small class="text-muted">Leave empty to use your full name</small>
+                            </div>
+
+                            <h6 class="mt-4 mb-3">Address Information</h6>
+
+                            <div class="mb-3">
+                                <label class="form-label">Street Address</label>
+                                <InputText @bind-Value="formData.Street" class="form-control" />
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">City</label>
+                                    <InputText @bind-Value="formData.City" class="form-control" />
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">State/Province</label>
+                                    <InputText @bind-Value="formData.State" class="form-control" />
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Postal Code</label>
+                                    <InputText @bind-Value="formData.PostalCode" class="form-control" />
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Country</label>
+                                    <InputText @bind-Value="formData.Country" class="form-control" />
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Description</label>
+                                <InputTextArea @bind-Value="formData.Description" class="form-control" rows="3" />
+                            </div>
+
+                            <div class="d-flex justify-content-between mt-4">
+                                <button type="button" class="btn btn-secondary" @onclick="GoBack" disabled="@isSubmitting">
+                                    Cancel
+                                </button>
+                                <button type="submit" class="btn btn-success" disabled="@isSubmitting">
+                                    @if (isSubmitting)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-2"></span>
+                                        <span>Syncing...</span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-cloud-upload me-2"></i>
+                                        <span>Sync to Salesforce</span>
+                                    }
+                                </button>
+                            </div>
+                        </EditForm>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private CreateSalesforceAccountDto formData = new();
+    private bool isSubmitting = false;
+    private bool isLoading = true;
+    private bool existsInSalesforce = false;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUserData();
+        await CheckSalesforceStatus();
+    }
+
+    private async Task LoadUserData()
+    {
+        try
+        {
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+
+            formData.Email = user.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value ?? string.Empty;
+
+            var name = user.Identity?.Name ?? string.Empty;
+            var nameParts = name.Split(' ', 2);
+            formData.FirstName = nameParts.Length > 0 ? nameParts[0] : string.Empty;
+            formData.LastName = nameParts.Length > 1 ? nameParts[1] : string.Empty;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading user data: {ex.Message}");
+        }
+    }
+
+    private async Task CheckSalesforceStatus()
+    {
+        try
+        {
+            var client = await CreateAuthenticatedClient();
+            var response = await client.GetFromJsonAsync<StatusResponse>("api/salesforce/check-status");
+
+            if (response != null)
+            {
+                existsInSalesforce = response.ExistsInSalesforce;
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error checking status: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task HandleSubmit()
+    {
+        isSubmitting = true;
+        errorMessage = null;
+
+        try
+        {
+            var client = await CreateAuthenticatedClient();
+            var response = await client.PostAsJsonAsync("api/salesforce/create-account", formData);
+
+            if (response.IsSuccessStatusCode)
+            {
+                await JS.InvokeVoidAsync("alert", "Successfully synced with Salesforce CRM!");
+                Navigation.NavigateTo("/dashboard");
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                errorMessage = $"Sync failed: {errorContent}";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo("/dashboard");
+    }
+
+    private async Task<HttpClient> CreateAuthenticatedClient()
+    {
+        var client = HttpClientFactory.CreateClient();
+        client.BaseAddress = new Uri("http://localhost:5070");
+
+        if (AuthStateProvider is NewLook.Services.CustomAuthenticationStateProvider customProvider)
+        {
+            var token = await customProvider.GetTokenAsync();
+            if (!string.IsNullOrEmpty(token))
+            {
+                client.DefaultRequestHeaders.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            }
+        }
+
+        return client;
+    }
+
+    private class StatusResponse
+    {
+        public bool ExistsInSalesforce { get; set; }
+    }
+}

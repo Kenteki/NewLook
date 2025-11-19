@@ -3,7 +3,6 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using NewLook.Services.Interfaces
 @using NewLook.Models.DTOs.Admin
-@using NewLook.Services
 @attribute [Authorize]
 @inject IUserService UserService
 @inject AuthenticationStateProvider AuthStateProvider
@@ -140,6 +139,10 @@
                                                             <button class="btn btn-outline-danger" @onclick="() => DeleteUser(user.Id)" title="Delete user">
                                                                 <i class="bi bi-trash"></i>
                                                             </button>
+
+                                                            <a href="/admin/sync-salesforce/@user.Id" class="btn btn-outline-success btn-sm" title="Sync to Salesforce">
+                                                                <i class="bi bi-cloud-upload"></i>
+                                                            </a>
                                                         </div>
                                                     </td>
                                                 </tr>
