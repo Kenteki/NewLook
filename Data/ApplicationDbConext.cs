@@ -20,6 +20,7 @@ namespace NewLook.Data
         public DbSet<Item> Items { get; set; } = null!;
         public DbSet<Comment> Comments { get; set; } = null!;
         public DbSet<Like> Likes { get; set; } = null!;
+        public DbSet<InventoryApiToken> InventoryApiTokens { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

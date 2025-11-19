@@ -29,17 +29,13 @@ namespace NewLook.Services
                 ?? "http://localhost:5070";
         }
 
-        private async Task<HttpClient> CreateHttpClientAsync(bool authenticated = false)
+        private HttpClient CreateHttpClient(bool authenticated = false)
         {
             var client = _httpClientFactory.CreateClient();
             client.BaseAddress = new Uri(_baseUrl);
 
-            if (authenticated && _authStateProvider is CustomAuthenticationStateProvider customProvider)
-            {
-                var token = await customProvider.GetTokenAsync();
-                if (!string.IsNullOrEmpty(token))
-                    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-            }
+            // For Blazor Server, authentication is handled via cookies automatically by the HttpClient
+            // The HttpClientFactory will include cookies from the current HTTP context
 
             return client;
         }
@@ -48,7 +44,7 @@ namespace NewLook.Services
         {
             try
             {
-                var client = await CreateHttpClientAsync();
+                var client = CreateHttpClient();
                 var response = await client.PostAsJsonAsync("/api/auth/register", dto);
 
                 if (response.IsSuccessStatusCode)
@@ -71,7 +67,7 @@ namespace NewLook.Services
         {
             try
             {
-                var client = await CreateHttpClientAsync();
+                var client = CreateHttpClient();
                 var response = await client.PostAsJsonAsync("/api/auth/login", dto);
 
                 if (response.IsSuccessStatusCode)
@@ -120,7 +116,7 @@ namespace NewLook.Services
 
                 _logger.LogInformation("Exchanging Google code with redirect URI: {RedirectUri}", redirectUri);
 
-                using var client = _httpClientFactory.CreateClient();
+                var client = _httpClientFactory.CreateClient();
                 var response = await client.PostAsync("https://oauth2.googleapis.com/token", content);
                 var responseContent = await response.Content.ReadAsStringAsync();
 
@@ -157,7 +153,7 @@ namespace NewLook.Services
             try
             {
                 _logger.LogInformation("Exchanging GitHub code");
-                var client = await CreateHttpClientAsync();
+                var client = CreateHttpClient();
                 var response = await client.PostAsJsonAsync("/api/auth/github/exchange", new { Code = code });
 
                 var responseContent = await response.Content.ReadAsStringAsync();
@@ -193,7 +189,7 @@ namespace NewLook.Services
         {
             try
             {
-                var client = await CreateHttpClientAsync();
+                var client = CreateHttpClient();
                 var response = await client.PostAsJsonAsync("/api/auth/google", new { AccessToken = accessToken });
 
                 if (response.IsSuccessStatusCode)
@@ -216,7 +212,7 @@ namespace NewLook.Services
         {
             try
             {
-                var client = await CreateHttpClientAsync();
+                var client = CreateHttpClient();
                 var response = await client.PostAsJsonAsync("/api/auth/github", new { AccessToken = accessToken });
 
                 if (response.IsSuccessStatusCode)
@@ -232,6 +228,73 @@ namespace NewLook.Services
             {
                 _logger.LogError(ex, "GitHub authentication failed");
                 return (false, $"Error: {ex.Message}", null);
+            }
+        }
+
+        // Generic HTTP methods for authenticated API calls
+        public async Task<T?> GetAsync<T>(string endpoint)
+        {
+            try
+            {
+                var client = CreateHttpClient(authenticated: true);
+                var response = await client.GetAsync(endpoint);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    return await response.Content.ReadFromJsonAsync<T>();
+                }
+
+                _logger.LogWarning("GET {Endpoint} failed with status {StatusCode}", endpoint, response.StatusCode);
+                return default;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error calling GET {Endpoint}", endpoint);
+                throw;
+            }
+        }
+
+        public async Task<TResponse?> PostAsync<TRequest, TResponse>(string endpoint, TRequest data)
+        {
+            try
+            {
+                var client = CreateHttpClient(authenticated: true);
+                var response = await client.PostAsJsonAsync(endpoint, data);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    return await response.Content.ReadFromJsonAsync<TResponse>();
+                }
+
+                _logger.LogWarning("POST {Endpoint} failed with status {StatusCode}", endpoint, response.StatusCode);
+                return default;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error calling POST {Endpoint}", endpoint);
+                throw;
+            }
+        }
+
+        public async Task<bool> DeleteAsync(string endpoint)
+        {
+            try
+            {
+                var client = CreateHttpClient(authenticated: true);
+                var response = await client.DeleteAsync(endpoint);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    return true;
+                }
+
+                _logger.LogWarning("DELETE {Endpoint} failed with status {StatusCode}", endpoint, response.StatusCode);
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error calling DELETE {Endpoint}", endpoint);
+                throw;
             }
         }
     }

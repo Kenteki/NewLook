@@ -428,6 +428,45 @@ namespace NewLook.Migrations
                     b.ToTable("InventoryAccesses");
                 });
 
+            modelBuilder.Entity("NewLook.Models.Entities.InventoryApiToken", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("InventoryId")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastUsedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Token")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InventoryId");
+
+                    b.ToTable("InventoryApiTokens");
+                });
+
             modelBuilder.Entity("NewLook.Models.Entities.InventoryTag", b =>
                 {
                     b.Property<int>("InventoryId")
@@ -780,6 +819,17 @@ namespace NewLook.Migrations
                     b.Navigation("Inventory");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("NewLook.Models.Entities.InventoryApiToken", b =>
+                {
+                    b.HasOne("NewLook.Models.Entities.Inventory", "Inventory")
+                        .WithMany()
+                        .HasForeignKey("InventoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Inventory");
                 });
 
             modelBuilder.Entity("NewLook.Models.Entities.InventoryTag", b =>

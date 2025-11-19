@@ -1,0 +1,273 @@
+@using NewLook.Models.DTOs.Api
+@using Microsoft.JSInterop
+@using NewLook.Services.Interfaces
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IInventoryApiTokenService TokenService
+@inject IConfiguration Configuration
+@inject IJSRuntime JS
+@inject AuthenticationStateProvider AuthStateProvider
+
+<div class="card shadow-sm">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">API Tokens</h5>
+        <button class="btn btn-primary btn-sm" @onclick="OpenCreateDialog">
+            <i class="bi bi-plus"></i> Generate Token
+        </button>
+    </div>
+    <div class="card-body">
+        @if (isLoading)
+        {
+            <div class="text-center py-4">
+                <div class="spinner-border spinner-border-sm" role="status"></div>
+            </div>
+        }
+        else if (!tokens.Any())
+        {
+            <p class="text-muted text-center py-4">
+                No API tokens generated yet. Create a token to allow external access to this inventory's aggregated data.
+            </p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-hover mb-0">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Token</th>
+                            <th>Created</th>
+                            <th>Expires</th>
+                            <th>Last Used</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var token in tokens)
+                        {
+                            <tr>
+                                <td>@(token.Name ?? "Unnamed")</td>
+                                <td>
+                                    <code class="user-select-all">@token.Token</code>
+                                    <button class="btn btn-sm btn-link" @onclick="() => CopyToClipboard(token.Token)">
+                                        <i class="bi bi-clipboard"></i>
+                                    </button>
+                                </td>
+                                <td><small>@token.CreatedAt.ToString("MMM dd, yyyy")</small></td>
+                                <td><small>@(token.ExpiresAt?.ToString("MMM dd, yyyy") ?? "Never")</small></td>
+                                <td><small>@(token.LastUsedAt?.ToString("MMM dd, yyyy HH:mm") ?? "Never")</small></td>
+                                <td>
+                                    @if (token.IsActive && (!token.ExpiresAt.HasValue || token.ExpiresAt.Value > DateTime.UtcNow))
+                                    {
+                                        <span class="badge bg-success">Active</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-danger">Inactive</span>
+                                    }
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => RevokeToken(token.Id)">
+                                        Revoke
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+
+        @if (showCreateDialog)
+        {
+            <div class="modal show d-block" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Generate API Token</h5>
+                            <button type="button" class="btn-close" @onclick="CloseCreateDialog"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label class="form-label">Token Name (Optional)</label>
+                                <input type="text" class="form-control" @bind="newTokenName" placeholder="e.g., Odoo Integration" />
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Expiration</label>
+                                <select class="form-select" @bind="newTokenExpiryDays">
+                                    <option value="">Never</option>
+                                    <option value="7">7 days</option>
+                                    <option value="30">30 days</option>
+                                    <option value="90">90 days</option>
+                                    <option value="365">1 year</option>
+                                </select>
+                            </div>
+                            @if (!string.IsNullOrEmpty(errorMessage))
+                            {
+                                <div class="alert alert-danger">@errorMessage</div>
+                            }
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" @onclick="CloseCreateDialog">Cancel</button>
+                            <button type="button" class="btn btn-primary" @onclick="CreateToken" disabled="@isCreating">
+                                @if (isCreating)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-2"></span>
+                                }
+                                Generate
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-backdrop show"></div>
+        }
+
+        <div class="mt-4">
+            <h6>API Endpoint</h6>
+            <p class="text-muted mb-2">Use this endpoint to retrieve aggregated inventory data:</p>
+            <div class="card bg-light">
+                <div class="card-body">
+                    <code>GET @baseUrl/api/inventory/data</code><br />
+                    <small class="text-muted">Header: X-API-Token: YOUR_TOKEN_HERE</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public int InventoryId { get; set; }
+
+    private List<InventoryApiTokenDto> tokens = new();
+    private bool isLoading = true;
+    private bool showCreateDialog = false;
+    private bool isCreating = false;
+    private string? newTokenName;
+    private string? newTokenExpiryDays;
+    private string? errorMessage;
+    private string baseUrl = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        baseUrl = Environment.GetEnvironmentVariable("APP_BASE_URL")
+            ?? Configuration["BaseUrl"]
+            ?? "http://localhost:5070";
+
+        await LoadTokens();
+    }
+
+    private async Task LoadTokens()
+    {
+        isLoading = true;
+        try
+        {
+            // Get current user ID
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userIdClaim = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var userId))
+            {
+                tokens = new();
+                return;
+            }
+
+            tokens = await TokenService.GetInventoryTokensAsync(InventoryId, userId);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading tokens: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void OpenCreateDialog()
+    {
+        newTokenName = null;
+        newTokenExpiryDays = null;
+        errorMessage = null;
+        showCreateDialog = true;
+    }
+
+    private void CloseCreateDialog()
+    {
+        showCreateDialog = false;
+    }
+
+    private async Task CreateToken()
+    {
+        isCreating = true;
+        errorMessage = null;
+
+        try
+        {
+            // Get current user ID
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userIdClaim = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var userId))
+            {
+                errorMessage = "User not authenticated";
+                return;
+            }
+
+            var dto = new CreateApiTokenDto
+            {
+                Name = newTokenName,
+                ExpiresInDays = string.IsNullOrEmpty(newTokenExpiryDays) ? null : int.Parse(newTokenExpiryDays)
+            };
+
+            var result = await TokenService.GenerateTokenAsync(InventoryId, userId, dto);
+            await LoadTokens();
+            CloseCreateDialog();
+            await JS.InvokeVoidAsync("alert", "API token generated successfully!");
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            errorMessage = $"Access denied: {ex.Message}";
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            isCreating = false;
+        }
+    }
+
+    private async Task RevokeToken(int tokenId)
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "Are you sure you want to revoke this token? This action cannot be undone."))
+            return;
+
+        try
+        {
+            // Get current user ID
+            var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+            var userIdClaim = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var userId))
+            {
+                return;
+            }
+
+            await TokenService.RevokeTokenAsync(tokenId, userId);
+            await LoadTokens();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error revoking token: {ex.Message}");
+        }
+    }
+
+    private async Task CopyToClipboard(string text)
+    {
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+        await JS.InvokeVoidAsync("alert", "Token copied to clipboard!");
+    }
+}

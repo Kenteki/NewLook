@@ -28,6 +28,7 @@ builder.Services.AddBlazorBootstrap();
 
 // ===== HttpClient =====
 builder.Services.AddHttpClient();
+builder.Services.AddHttpContextAccessor();
 
 // ===== CORS =====
 builder.Services.AddCors(options =>
@@ -84,6 +85,10 @@ builder.Services.AddScoped<ICloudinaryService, CloudinaryService>();
 builder.Services.Configure<SalesforceSettings>(builder.Configuration.GetSection("Salesforce"));
 builder.Services.AddScoped<ISalesforceAuthService, SalesforceAuthService>();
 builder.Services.AddScoped<ISalesforceService, SalesforceService>();
+
+// ===== Inventory API =====
+builder.Services.AddScoped<IInventoryApiTokenService, InventoryApiTokenService>();
+builder.Services.AddScoped<IInventoryAggregationService, InventoryAggregationService>();
 
 builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<AuthenticationStateProvider, CustomAuthenticationStateProvider>();

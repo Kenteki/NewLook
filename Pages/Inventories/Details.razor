@@ -111,6 +111,14 @@
                     Statistics
                 </button>
             </li>
+            @if (inventory.HasWriteAccess)
+            {
+                <li class="nav-item">
+                    <button class="nav-link @(activeTab == "api" ? "active" : "")" @onclick='() => SetActiveTab("api")'>
+                        API
+                    </button>
+                </li>
+            }
         </ul>
 
         <!-- Tab Content -->
@@ -530,6 +538,10 @@
                     }
                 </div>
             </div>
+        }
+        else if (activeTab == "api")
+        {
+            <ApiTokenManager InventoryId="@Id" />
         }
     }
 </div>
