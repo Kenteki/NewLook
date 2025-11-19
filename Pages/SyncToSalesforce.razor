@@ -8,6 +8,7 @@
 @inject IHttpClientFactory HttpClientFactory
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
+@inject IConfiguration Configuration
 @inject IJSRuntime JS
 
 <PageTitle>Sync to Salesforce - NewLook</PageTitle>
@@ -239,7 +240,10 @@
     private async Task<HttpClient> CreateAuthenticatedClient()
     {
         var client = HttpClientFactory.CreateClient();
-        client.BaseAddress = new Uri("http://localhost:5070");
+        var baseUrl = Environment.GetEnvironmentVariable("APP_BASE_URL")
+            ?? Configuration["BaseUrl"]
+            ?? "http://localhost:5070";
+        client.BaseAddress = new Uri(baseUrl);
 
         if (AuthStateProvider is NewLook.Services.CustomAuthenticationStateProvider customProvider)
         {
